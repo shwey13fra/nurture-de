@@ -1,0 +1,35 @@
+# referrals.yaml — Action endpoints for NurtureDE
+# =============================================================================
+# CITABLE DOCUMENTS vs ACTION ENDPOINTS
+#
+# sources.yaml holds *citable documents*: static, official information pages we
+# fetch, chunk, embed, and quote from — with a citation for every claim.
+#
+# This file holds *action endpoints*: interactive directories and tools (search
+# a midwife by postcode, look up a contracted provider). Their value is the
+# live lookup they perform, not any prose we could quote. So they are:
+#   - NEVER fetched
+#   - NEVER chunked or embedded
+#   - NEVER added to sources.yaml
+# They are surfaced to the user as a "next step: do this here" link, kept
+# visually and semantically distinct from cited information. `when_to_surface`
+# lists intent cues the answer layer can match to decide when to show them.
+# =============================================================================
+
+referrals:
+
+  - id: ref_ammely
+    name: "Ammely — Hebammensuche"
+    url: https://www.ammely.de/
+    operator: "Deutscher Hebammenverband"
+    purpose: "Search and contact midwives by postal code and due date"
+    language: de
+    when_to_surface: [find midwife, Hebammensuche, postnatal care]
+
+  - id: ref_gkv_hebammenliste
+    name: "GKV-Spitzenverband Hebammenliste"
+    url: https://www.gkv-spitzenverband.de/service/hebammenliste/hebammenliste.jsp
+    operator: "GKV-Spitzenverband"
+    purpose: "Official list of midwives contracted with statutory insurers"
+    language: de
+    when_to_surface: [find midwife, statutory insurance, Hebammensuche]

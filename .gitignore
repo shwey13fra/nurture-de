@@ -1,0 +1,14 @@
+# Corpus — never track fetched or derived content
+data/raw/
+data/processed/
+
+# Vector store
+chroma_db/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets
+.env

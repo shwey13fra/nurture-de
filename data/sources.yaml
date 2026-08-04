@@ -1,0 +1,448 @@
+# sources.yaml — Citable documents for NurtureDE
+# =============================================================================
+# Every entry here is a document that WILL be fetched, chunked, indexed, and
+# cited. Action endpoints (interactive directories) live in referrals.yaml and
+# are never ingested — see that file for the distinction.
+#
+# Field ownership (which task fills what):
+#   Task 2 (now):   id, url, file, authority, authority_tier, category,
+#                   language, jurisdiction, pairs_with, notes
+#   Task 4 (fetch): content_hash, last_verified_date
+#   Task 5 (meta):  topic, subtopic, user_type, insurance_type
+# Fields owned by a later task are `null` here on purpose — not missing data.
+#
+# Enums:
+#   authority_tier : primary-law | federal | statutory-insurer | land
+#                    (primary-law = the statute text itself; ranks ABOVE federal
+#                    plain-language sources. Intended as a retrieval RANKING
+#                    signal on Day 3 — see gii_muschg_2018 notes.)
+#   category       : legal-administrative | health | insurer-official
+#   language       : de | en
+#
+# Lifecycle fields (optional; present only when relevant):
+#   status         : superseded   — kept for the record, not ingested/cited
+#   superseded_by  : <id>         — the entry that replaced this one
+#
+# pairs_with: cross-links a federal page (states the statutory RULE) with an
+#   insurer page (states the PROCESS) covering the same topic. Used on Day 3 to
+#   test whether the system cites the right register for the question asked.
+# =============================================================================
+
+sources:
+
+  # --- Familienportal des Bundes — federal, legal-administrative, German ------
+  - id: fam_mutterschutz
+    url: https://familienportal.de/familienportal/familienleistungen/mutterschutz
+    file: data/raw/fam_mutterschutz.html
+    authority: "Familienportal des Bundes"
+    authority_tier: federal
+    category: legal-administrative
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "9953c1e351dcd17962fdd110d04381a246f822d6788b9da8aa86ca599c3979c5"
+    pairs_with: [tk_maternity_benefits, gii_muschg_2018]
+    notes: "Federal (family-ministry) plain-language statement of Mutterschutz; pairs with the primary statute (gii_muschg_2018) — differing register, flagged for Day 3 conflicting-source eval."
+
+  - id: fam_mutterschaftsleistungen
+    url: https://familienportal.de/familienportal/familienleistungen/mutterschaftsleistungen
+    file: data/raw/fam_mutterschaftsleistungen.html
+    authority: "Familienportal des Bundes"
+    authority_tier: federal
+    category: legal-administrative
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "c006ee46d80e6f0d53630afa1a4dcfaca15a3ba56f05f0a93cbfe7499328f52d"
+    pairs_with: [tk_maternity_pay, tk_maternity_pay_apply]
+    notes: "Federal rule for Mutterschaftsgeld; pairs with TK insurer process pages."
+
+  - id: fam_elterngeld
+    url: https://familienportal.de/familienportal/familienleistungen/elterngeld
+    file: data/raw/fam_elterngeld.html
+    authority: "Familienportal des Bundes"
+    authority_tier: federal
+    category: legal-administrative
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "c864436521d2d35d61ad2e008d3af1b9294d159b51ded01002e6bbf880897508"
+    pairs_with: []
+    notes: "Elterngeld overview (Basiselterngeld / ElterngeldPlus)."
+
+  - id: fam_elterngeld_faq
+    url: https://familienportal.de/familienportal/familienleistungen/elterngeld/faq
+    file: data/raw/fam_elterngeld_faq.html
+    authority: "Familienportal des Bundes"
+    authority_tier: federal
+    category: legal-administrative
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "cacfe969f3d0871b592857df634be70a5c710b227b717fd9a3b7e4c387d18f5f"
+    pairs_with: []
+    notes: "Elterngeld FAQ landing page."
+
+  - id: fam_elterngeld_antrag
+    url: https://familienportal.de/familienportal/familienleistungen/elterngeld/faq/wie-kann-ich-elterngeld-beantragen--124762
+    file: data/raw/fam_elterngeld_antrag.html
+    authority: "Familienportal des Bundes"
+    authority_tier: federal
+    category: legal-administrative
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "c96466224c4945b874f4eb79c6c59c4b206352d0acab0a8de1efe748faf02b3f"
+    pairs_with: []
+    notes: "How to apply for Elterngeld (federal process description)."
+
+  - id: fam_kindergeld
+    url: https://familienportal.de/familienportal/familienleistungen/kindergeld
+    file: data/raw/fam_kindergeld.html
+    authority: "Familienportal des Bundes"
+    authority_tier: federal
+    category: legal-administrative
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "fb8ab5de0805edbe46fec5ad7799f35da635b47e20feb5fef5b274a7261f4e5e"
+    pairs_with: []
+    notes: "Kindergeld overview."
+
+  - id: fam_elternzeit
+    url: https://familienportal.de/familienportal/familienleistungen/elternzeit
+    file: data/raw/fam_elternzeit.html
+    authority: "Familienportal des Bundes"
+    authority_tier: federal
+    category: legal-administrative
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "4d8e9bb97d4d6905ea194114ea7cf665059312f4e1904f91a0ff6bcc8f9851b1"
+    pairs_with: []
+    notes: "Elternzeit (job-protected parental leave)."
+
+  - id: fam_staatliche_leistungen
+    url: https://familienportal.de/familienportal/lebenslagen/schwangerschaft-geburt/staatliche-leistungen
+    file: data/raw/fam_staatliche_leistungen.html
+    authority: "Familienportal des Bundes"
+    authority_tier: federal
+    category: legal-administrative
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "c1007398362e0eb6bb6b9fcca70dc6ec25882ddae30d6821528a1fc8aab76e26"
+    pairs_with: [fam_leistungen_ueberblick]
+    notes: "Life-situation view: state benefits around pregnancy & birth."
+
+  - id: fam_leistungen_ueberblick
+    url: https://familienportal.de/familienportal/familienleistungen/familienleistungen-ueberblick
+    file: data/raw/fam_leistungen_ueberblick.html
+    authority: "Familienportal des Bundes"
+    authority_tier: federal
+    category: legal-administrative
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "8a204fe79afb0ec181615105aa450d21ef52922212a1f691265df7fda7d19d19"
+    pairs_with: [fam_staatliche_leistungen]
+    notes: "Benefits-catalogue overview; likely structural near-duplicate of staatliche_leistungen."
+
+  - id: fam_anmeldung_standesamt
+    url: https://familienportal.de/familienportal/lebenslagen/schwangerschaft-geburt/anmeldung-standesamt
+    file: data/raw/fam_anmeldung_standesamt.html
+    authority: "Familienportal des Bundes"
+    authority_tier: federal
+    category: legal-administrative
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "4b52be8948dbeda1177eb722ee75ecb516a45da65f252373fcbf6c0616f42820"
+    pairs_with: [fam_vaterschaftsanerkennung, fam_checkliste_nach_geburt]
+    notes: "Birth registration at the Standesamt (Geburtsanzeige, Geburtsurkunde issuance). Federal answer to the birth-registration gap; clean fetch (frankfurt.de 403s, Bundesportal is a SPA)."
+
+  - id: fam_vaterschaftsanerkennung
+    url: https://familienportal.de/familienportal/lebenslagen/schwangerschaft-geburt/vaterschaftanerkennung
+    file: data/raw/fam_vaterschaftsanerkennung.html
+    authority: "Familienportal des Bundes"
+    authority_tier: federal
+    category: legal-administrative
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "a8bf64fb868a40e8c3cad8afd272ae427a852413fc747e34aee3ebc6053ff53f"
+    pairs_with: [fam_anmeldung_standesamt]
+    notes: "Vaterschaftsanerkennung — prerequisite to birth registration for unmarried parents; high-value / non-obvious for internationals."
+
+  - id: fam_checkliste_nach_geburt
+    url: https://familienportal.de/familienportal/lebenslagen/schwangerschaft-geburt/checklisten/checkliste-nach-der-geburt-197882
+    file: data/raw/fam_checkliste_nach_geburt.html
+    authority: "Familienportal des Bundes"
+    authority_tier: federal
+    category: legal-administrative
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "69c814fa6d0159556e8d9e586f16007f96327ecd25017db656ce2c5f999f2002"
+    pairs_with: [fam_anmeldung_standesamt]
+    notes: "Post-birth administrative checklist tying registration and benefits together; natural 'what do I do now' anchor."
+
+  # --- gesund.bund.de — Bundesministerium für Gesundheit — federal, health ----
+  - id: gesund_vorsorge_de
+    url: https://gesund.bund.de/wege-im-gesundheitswesen/schwangerschaft-und-geburt/schwangerschaft/schwangerschaftsvorsorge
+    file: data/raw/gesund_vorsorge_de.html
+    authority: "Bundesministerium für Gesundheit"
+    authority_tier: federal
+    category: health
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "c1aebe7c65a67864e117066cc3d0454a0947e82dc79af0045b6dd7af62816f4d"
+    pairs_with: [gesund_vorsorge_en]
+    notes: "Antenatal care (DE). DE/EN pair — test cross-language structural divergence."
+
+  - id: gesund_vorsorge_en
+    url: https://gesund.bund.de/en/schwangerschaftsvorsorge
+    file: data/raw/gesund_vorsorge_en.html
+    authority: "Bundesministerium für Gesundheit"
+    authority_tier: federal
+    category: health
+    language: en
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "cd4a8600292ccfe2befc41008a860cd74580f2c20afba1509a4425c5fc768a4e"
+    pairs_with: [gesund_vorsorge_de]
+    notes: "Antenatal care (EN) — English rendering of gesund_vorsorge_de."
+
+  - id: gesund_geburtsvorbereitung_en
+    url: https://gesund.bund.de/en/geburtsvorbereitung
+    file: data/raw/gesund_geburtsvorbereitung_en.html
+    authority: "Bundesministerium für Gesundheit"
+    authority_tier: federal
+    category: health
+    language: en
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "90a3618226997e6c5a2a029b4d85c19ac3302cc4c39a0636d1ba41b581449ebd"
+    pairs_with: []
+    notes: "Birth preparation (EN). No DE counterpart in corpus."
+
+  - id: gesund_wochenbett_de
+    url: https://gesund.bund.de/wege-im-gesundheitswesen/schwangerschaft-und-geburt/nach-der-geburt/wochenbett
+    file: data/raw/gesund_wochenbett_de.html
+    authority: "Bundesministerium für Gesundheit"
+    authority_tier: federal
+    category: health
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "0cab850f3520af284440a79fe6241c3fb04b127dbccf7562d606733e1a01da92"
+    pairs_with: []
+    notes: "Postpartum period (Wochenbett)."
+
+  - id: gesund_unterstuetzung_de
+    url: https://gesund.bund.de/unterstuetzung-fuer-familien-nach-der-geburt
+    file: data/raw/gesund_unterstuetzung_de.html
+    authority: "Bundesministerium für Gesundheit"
+    authority_tier: federal
+    category: health
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "db6e9f767ae1f2e8e71cfa2ea9212b7ecb17700aadda3d5f865a29bdf57180f7"
+    pairs_with: [gesund_fruehe_hilfen_de]
+    notes: "Support for families after birth."
+
+  - id: gesund_fruehe_hilfen_de
+    url: https://gesund.bund.de/wege-im-gesundheitswesen/kindheit/gesund-aufwachsen/fruehe-hilfen
+    file: data/raw/gesund_fruehe_hilfen_de.html
+    authority: "Bundesministerium für Gesundheit"
+    authority_tier: federal
+    category: health
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "bf6c70379f992a918d65a8aae90a911f3f45736ef687508826f280bad8ab460d"
+    pairs_with: [gesund_unterstuetzung_de]
+    notes: "Frühe Hilfen (early-childhood support networks)."
+
+  # --- Techniker Krankenkasse — statutory insurer, insurer-official, English --
+  - id: tk_maternity_benefits
+    url: https://www.tk.de/en/tk-services-benefits-/service/life-change/maternity-benefits-2079196
+    file: data/raw/tk_maternity_benefits.html
+    authority: "Techniker Krankenkasse"
+    authority_tier: statutory-insurer
+    category: insurer-official
+    language: en
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "31d45a412951bdd6d2e34c303b1df0a3d4f43e13586913769b5bdd9fb404ed11"
+    pairs_with: [fam_mutterschutz, fam_mutterschaftsleistungen]
+    notes: "TK maternity benefits overview (insurer perspective, EN)."
+
+  - id: tk_maternity_pay
+    url: https://www.tk.de/en/tk-services-benefits-/service/life-change/pregnancy-maternity-payment-in-germany/maternity-pay-germany-2218042
+    file: data/raw/tk_maternity_pay.html
+    authority: "Techniker Krankenkasse"
+    authority_tier: statutory-insurer
+    category: insurer-official
+    language: en
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "3ebb08f9b5ce9d574fd234c585bd5555af0c58653b82617f02da45220db53e19"
+    pairs_with: [fam_mutterschaftsleistungen]
+    notes: "Mutterschaftsgeld explained by insurer; pairs with federal rule (fam_mutterschaftsleistungen)."
+
+  - id: tk_maternity_pay_apply
+    url: https://www.tk.de/en/tk-services-benefits-/service/life-change/pregnancy-maternity-payment-in-germany/apply-for-maternity-pay-germany-2218044
+    file: data/raw/tk_maternity_pay_apply.html
+    authority: "Techniker Krankenkasse"
+    authority_tier: statutory-insurer
+    category: insurer-official
+    language: en
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "8ac2aca08f5007e2cc7d557a9008174258354f638cdb1dbe13e36c34d8bb8ec3"
+    pairs_with: [fam_mutterschaftsleistungen]
+    notes: "How to apply for Mutterschaftsgeld via TK (insurer process)."
+
+  - id: tk_find_midwife
+    url: https://www.tk.de/en/tk-services-benefits-/service/life-change/find-midwife-2079398
+    file: data/raw/tk_find_midwife.html
+    authority: "Techniker Krankenkasse"
+    authority_tier: statutory-insurer
+    category: insurer-official
+    language: en
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "27baa3bb857cf02eb6fd86afda29aa550a7a6a0c60400b1a6bd3f0c5c755c165"
+    pairs_with: []
+    notes: "TK info page on finding a midwife. Surface referrals (Ammely, GKV list) alongside."
+
+  # --- BMAS MuSchG page — SUPERSEDED (turned out to be a ~140-char referral ---
+  # stub linking to juris, not the statute text). Kept for the record; replaced
+  # by gii_muschg_2018. Not chunked, not cited.
+  - id: bmas_mutterschutzgesetz
+    url: https://www.bmas.de/DE/Service/Gesetze-und-Gesetzesvorhaben/mutterschutzgesetz.html
+    file: data/raw/bmas_mutterschutzgesetz.html
+    authority: "Bundesministerium für Arbeit und Soziales"
+    authority_tier: federal
+    category: legal-administrative
+    language: de
+    status: superseded
+    superseded_by: gii_muschg_2018
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "c49fd879b3c7d905f99c06d8d11e47b502bb093b6e2966889d458e912d8bc6a1"
+    pairs_with: []
+    notes: "SUPERSEDED. Clean extraction revealed this BMAS page is a ~140-char stub that only links to the statute on juris — it is NOT the law text. Replaced by gii_muschg_2018 (the actual MuSchG). Retained as a provenance record of the correction."
+
+  # --- Gesetze im Internet (BMJ/juris) — the PRIMARY statute text -------------
+  - id: gii_muschg_2018
+    url: https://www.gesetze-im-internet.de/muschg_2018/
+    file: data/raw/gii_muschg_2018.html
+    authority: "Bundesministerium der Justiz (gesetze-im-internet.de / juris GmbH)"
+    authority_tier: primary-law
+    category: legal-administrative
+    language: de
+    topic: null
+    subtopic: null
+    user_type: null
+    insurance_type: null
+    jurisdiction: DE
+    last_verified_date: "2026-08-03"
+    content_hash: "7c0137e271d8f0f461c3a281800d7ade07b5062b167ac8e8b5c5f1d094a6c78c"
+    pairs_with: [fam_mutterschutz]
+    notes: "PRIMARY LAW: full text of the Mutterschutzgesetz (MuSchG, 2018) on the official federal law portal. Single-page consolidated version only (do NOT crawl individual § pages). Replaces bmas_mutterschutzgesetz. KNOWN ISSUE for Day 3 eval: dense legalese matches strongly on exact German terms users search, but it is the WRONG register to surface to a pregnant user — plan to prefer plain-language sources for user-facing answers and cite this statute only as supporting basis, using authority_tier as the ranking signal. robots.txt: allow-all (verified 2026-08-03)."
