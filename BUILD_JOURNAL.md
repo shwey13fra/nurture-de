@@ -127,6 +127,20 @@ amounts, and a flattened number-wall is a hallucination hazard pointing at exact
 that content. Fixing (recurse into `<p>`; re-extract, new hashes) is a deferred
 Phase-1b decision.
 
+**Resolved (Phase-1b amendment):** `collect_blocks` now detects a block nested in
+a `<p>` and processes the `<p>`'s children in document order (`_emit_mixed`),
+flushing inline text before each block so the existing `_table_md` renders it. All
+four `<p>`-nested tables recovered into Markdown pipe tables. The `table-degraded`
+heuristic had over-fired on the *recovered* tables and on number-heavy prose;
+tightened to a single-line, non-pipe, currency-dense run-on. **1 residual**
+(`fam_mutterschaftsleistungen`, "Wie hoch ist der Arbeitgeberzuschuss…"): the
+source wrote that worked example as **prose with no `<table>` element** — nothing
+to recover, it was never a table; kept tagged as a benefit-amount number-wall for
+the safety reason above. Broader lesson for Day 3: benefit-amount safety is now
+**decoupled from table structure** (recovered pipe tables still contain amounts) —
+"don't state amounts" belongs at the retrieval/answer-policy layer, not a
+structural `content_kind`.
+
 ### P5 — Second extraction-rooted leak: TK `Contact / date` footer
 
 Surfaced in the same cold read: 3 TK chunks (`tk_find_midwife`,
@@ -137,3 +151,10 @@ P4 (extraction-rooted, not chunking). Deliberately **not** patched in the chunke
 avoid. Deferred to the same extraction-fix decision as P4. Residual impact: ~1.5%
 of chunks carry a cosmetic prefix; content remains meaningful; overall cold-read
 failure rate ≤4.5%, under the 10–15% bar.
+
+**Resolved (Phase-1b amendment):** `DROP_ATTR_PATTERNS` extended with
+`contact-button` (the floating `<tkds-floating-action-button>` "Contact") and
+`data-and-author` (the `<time>` publish date in `article-header__data-and-author`).
+Re-extraction: **0 leaked prefixes** remain across all TK docs. Especially worth
+fixing pre-embedding because the leak sat at the *head* of `embed_text`, where it
+distorts the vector most.

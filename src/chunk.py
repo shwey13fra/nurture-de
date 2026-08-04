@@ -112,14 +112,17 @@ EURO = re.compile(r"\d[\d.,]*\s*Euro")
 
 
 def is_table_degraded(text):
-    """A chunk holding a <p>-nested table that extraction flattened into a
-    number-wall (Phase-2 finding). Heuristic: a non-list paragraph dense with
-    currency amounts. Tagged (not dropped) so Day-3 retrieval can find + down-
-    weight it — aligned with the design rule NOT to state benefit amounts."""
+    """A run-on number-wall: a single-line, non-list paragraph dense with currency
+    amounts and NO markdown-table structure. Phase-1b's P4 fix recovered every
+    <p>-nested <table> into a proper pipe table, so this now flags only content the
+    SOURCE itself wrote as an unstructured number run (e.g. a worked example in
+    prose, not a <table>) — a benefit-amount hallucination hazard tagged for Day-3
+    down-weight. Excludes rendered pipe tables (contain '|') and multi-line blocks."""
     for para in re.split(r"\n{2,}", body_only(text)):
-        if para.lstrip()[:1] in ("-", "*"):
+        p = para.strip()
+        if not p or p[:1] in ("-", "*") or "|" in p or "\n" in p:
             continue
-        if len(EURO.findall(para)) >= 5:
+        if len(EURO.findall(p)) >= 5:
             return True
     return False
 

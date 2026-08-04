@@ -31,7 +31,7 @@ import re
 import sys
 from urllib.parse import urlsplit
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, NavigableString, Tag
 
 # Reuse fetch.py's paths, comment-safe YAML writeback, and text hasher (DRY).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -84,7 +84,11 @@ DROP_ATTR_PATTERNS = re.compile(
     r"cookie|consent|feedback|bewertung|rating|breadcrumb|contact-flap|"
     r"social|skip-link|sr-only|visually-hidden|teaser|related|meta-nav|"
     r"content-cluster|footer-links|__nav|nav-list|"
-    r"header__buttons|bookmark|header-alert",
+    r"header__buttons|bookmark|header-alert|"
+    # P5 (Phase-2 finding): TK leaks a floating "Contact" button (div.contact-
+    # button) and an article publish date (tkds-text.article-header__data-and-
+    # author) into the content root — both surfaced at the head of embed_text.
+    r"contact-button|data-and-author",
     re.I,
 )
 
@@ -209,6 +213,47 @@ def _table_md(table_el):
     return "\n".join(out)
 
 
+def _emit_mixed(node, blocks):
+    """P4 (Phase-2 finding): a <p> that wraps a block-level child — a <table>
+    (often inside a <div>), <ul>, or <ol>. Familienportal ships <table> nested in
+    <p>, which is invalid HTML; the plain <p> branch flattened it via get_text()
+    into a number-wall and never reached _table_md. Walk children in document
+    order, flushing buffered inline text as a paragraph before each block, so
+    neither the surrounding sentences nor the table/list are lost."""
+    buf = []
+
+    def flush():
+        if buf:
+            txt = clean_text(" ".join(buf))
+            if txt:
+                blocks.append(txt)
+            buf[:] = []
+
+    for c in node.children:
+        if isinstance(c, NavigableString):
+            buf.append(str(c))
+            continue
+        name = c.name.lower()
+        if name in SKIP_INLINE:
+            continue
+        if name == "table":
+            flush()
+            t = _table_md(c)
+            if t:
+                blocks.append(t)
+        elif name in ("ul", "ol"):
+            flush()
+            lines = _list_lines(c, name == "ol", 0)
+            if lines:
+                blocks.append("\n".join(lines))
+        elif c.find(["table", "ul", "ol"]) is not None:
+            flush()
+            _emit_mixed(c, blocks)          # e.g. the <div> that holds the tables
+        else:
+            buf.append(c.get_text(" ", strip=True))
+    flush()
+
+
 def collect_blocks(node, blocks):
     """Walk children in document order, emitting Markdown blocks. Each block is
     a string; blocks are later joined with blank lines. Lists/tables emit as a
@@ -226,9 +271,12 @@ def collect_blocks(node, blocks):
             level = _heading_level(child) or 2
             blocks.append("#" * min(level, 6) + " " + txt)
         elif name == "p":
-            txt = clean_text(child.get_text(" ", strip=True))
-            if txt:
-                blocks.append(txt)
+            if child.find(["table", "ul", "ol"]) is not None:
+                _emit_mixed(child, blocks)      # P4: block nested inside a <p>
+            else:
+                txt = clean_text(child.get_text(" ", strip=True))
+                if txt:
+                    blocks.append(txt)
         elif name in ("ul", "ol"):
             lines = _list_lines(child, name == "ol", 0)
             if lines:

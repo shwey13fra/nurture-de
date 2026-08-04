@@ -44,7 +44,7 @@ sources:
     insurance_type: null
     jurisdiction: DE
     last_verified_date: "2026-08-03"
-    content_hash: "9953c1e351dcd17962fdd110d04381a246f822d6788b9da8aa86ca599c3979c5"
+    content_hash: "85843f694a691b459ff023db3b3c576e4f93da854338932cd552467d7eb71105"
     pairs_with: [tk_maternity_benefits]
     notes: "Federal (family-ministry) plain-language statement of Mutterschutz; the authoritative user-facing register for MuSchG content. Previously paired with gii_muschg_2018 for a register-distinction eval, but that statute entry is superseded (Phase 1c: it was only a table-of-contents) — the plain-language/insurer-process distinction against tk_maternity_benefits remains the live Day-3 eval."
 
@@ -61,7 +61,7 @@ sources:
     insurance_type: null
     jurisdiction: DE
     last_verified_date: "2026-08-03"
-    content_hash: "c006ee46d80e6f0d53630afa1a4dcfaca15a3ba56f05f0a93cbfe7499328f52d"
+    content_hash: "5805dd5d4b76b84eda39ae27375b8d5d64cfd293718c3c6cff2b504c39462330"
     pairs_with: [tk_maternity_pay, tk_maternity_pay_apply]
     notes: "Federal rule for Mutterschaftsgeld; pairs with TK insurer process pages."
 
@@ -95,7 +95,7 @@ sources:
     insurance_type: null
     jurisdiction: DE
     last_verified_date: "2026-08-03"
-    content_hash: "cacfe969f3d0871b592857df634be70a5c710b227b717fd9a3b7e4c387d18f5f"
+    content_hash: "b3f19d3819b362414675bb943396a634fc342a1f11b3a11b5191f8bfec84e7f6"
     pairs_with: []
     notes: "Elterngeld FAQ landing page."
 
@@ -112,7 +112,7 @@ sources:
     insurance_type: null
     jurisdiction: DE
     last_verified_date: "2026-08-03"
-    content_hash: "c96466224c4945b874f4eb79c6c59c4b206352d0acab0a8de1efe748faf02b3f"
+    content_hash: "a68de6b36e948411b9aa7e76f4ffaa5b5b07129b0ec13cca36d358d6b4558470"
     pairs_with: []
     notes: "How to apply for Elterngeld (federal process description)."
 
@@ -352,7 +352,7 @@ sources:
     insurance_type: null
     jurisdiction: DE
     last_verified_date: "2026-08-03"
-    content_hash: "31d45a412951bdd6d2e34c303b1df0a3d4f43e13586913769b5bdd9fb404ed11"
+    content_hash: "bd995d10eedad5f9d7454df19107029e1f906aaa4ce95fd73313155980273f88"
     pairs_with: [fam_mutterschutz, fam_mutterschaftsleistungen]
     notes: "TK maternity benefits overview (insurer perspective, EN)."
 
@@ -369,7 +369,7 @@ sources:
     insurance_type: null
     jurisdiction: DE
     last_verified_date: "2026-08-03"
-    content_hash: "3ebb08f9b5ce9d574fd234c585bd5555af0c58653b82617f02da45220db53e19"
+    content_hash: "af45dc600c020eacafb8eb3abd96edbff6d41f2d2048a5eb6e840d1f12e4f5e9"
     pairs_with: [fam_mutterschaftsleistungen]
     notes: "Mutterschaftsgeld explained by insurer; pairs with federal rule (fam_mutterschaftsleistungen)."
 
@@ -386,7 +386,7 @@ sources:
     insurance_type: null
     jurisdiction: DE
     last_verified_date: "2026-08-03"
-    content_hash: "8ac2aca08f5007e2cc7d557a9008174258354f638cdb1dbe13e36c34d8bb8ec3"
+    content_hash: "ba6b548bbecada390b1fe33b8b40a0334bd8013bb57d8b9aef998ccbf13d1051"
     pairs_with: [fam_mutterschaftsleistungen]
     notes: "How to apply for Mutterschaftsgeld via TK (insurer process)."
 
@@ -403,7 +403,7 @@ sources:
     insurance_type: null
     jurisdiction: DE
     last_verified_date: "2026-08-03"
-    content_hash: "27baa3bb857cf02eb6fd86afda29aa550a7a6a0c60400b1a6bd3f0c5c755c165"
+    content_hash: "39bcdd965e416973a9177f3da84677c9dcbea09ee95601fef07a1cb6daca2e28"
     pairs_with: []
     notes: "TK info page on finding a midwife. Surface referrals (Ammely, GKV list) alongside."
 
