@@ -1,6 +1,7 @@
 # Corpus — never track fetched or derived content
 data/raw/
 data/processed/
+data/chunks.jsonl
 
 # Vector store
 chroma_db/
