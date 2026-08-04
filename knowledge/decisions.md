@@ -61,3 +61,23 @@
 - **Stub tripwire in extraction.** Flag any source whose clean extraction is <500
   chars as a probable stub / JS-rendered page needing manual review. Abstracts the
   BMAS-stub mistake into a check that catches the whole class automatically.
+
+## 2026-08-04 — Phase 1c
+
+- **`gii_muschg_2018` reclassified `superseded` (not fetched deeper).** The
+  gesetze-im-internet.de statute root is a table-of-contents frame (§§ 1-34 titles,
+  ~2.8k chars, no normative text); the real text is on 34 per-§ pages. Chose NOT to
+  crawl them: (1) 34 URLs is a crawl, not curation; (2) it adds a fourth site-specific
+  boilerplate family; (3) legalese is the wrong register for the user — the federal
+  portal (`fam_mutterschutz`) is the authoritative plain-language source. Statute
+  citation moves to the README roadmap as a supporting-EVIDENCE layer, never
+  user-facing. `superseded_by: fam_mutterschutz`; retained as a provenance record.
+  Active corpus is now **22** (federal 18, statutory-insurer 4, primary-law 0);
+  superseded 2 (`bmas_mutterschutzgesetz`, `gii_muschg_2018`); 24 entries total.
+
+- **Near-zero boilerplate reduction is itself a stub signal.** `gii_muschg_2018`
+  *grew* under clean extraction (-9.2%: TOC → Markdown table). Generalized: a
+  document that loses almost nothing to boilerplate stripping probably has no prose
+  content. Pair "reduction ≈ 0% or negative" with the existing <500-char floor as a
+  two-pronged corpus-validation heuristic — either alone misses cases the other
+  catches (a long TOC passes the char floor; a short real snippet has high reduction).

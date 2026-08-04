@@ -45,8 +45,8 @@ sources:
     jurisdiction: DE
     last_verified_date: "2026-08-03"
     content_hash: "9953c1e351dcd17962fdd110d04381a246f822d6788b9da8aa86ca599c3979c5"
-    pairs_with: [tk_maternity_benefits, gii_muschg_2018]
-    notes: "Federal (family-ministry) plain-language statement of Mutterschutz; pairs with the primary statute (gii_muschg_2018) — differing register, flagged for Day 3 conflicting-source eval."
+    pairs_with: [tk_maternity_benefits]
+    notes: "Federal (family-ministry) plain-language statement of Mutterschutz; the authoritative user-facing register for MuSchG content. Previously paired with gii_muschg_2018 for a register-distinction eval, but that statute entry is superseded (Phase 1c: it was only a table-of-contents) — the plain-language/insurer-process distinction against tk_maternity_benefits remains the live Day-3 eval."
 
   - id: fam_mutterschaftsleistungen
     url: https://familienportal.de/familienportal/familienleistungen/mutterschaftsleistungen
@@ -444,5 +444,7 @@ sources:
     jurisdiction: DE
     last_verified_date: "2026-08-03"
     content_hash: "7c0137e271d8f0f461c3a281800d7ade07b5062b167ac8e8b5c5f1d094a6c78c"
-    pairs_with: [fam_mutterschutz]
-    notes: "PRIMARY LAW: full text of the Mutterschutzgesetz (MuSchG, 2018) on the official federal law portal. Single-page consolidated version only (do NOT crawl individual § pages). Replaces bmas_mutterschutzgesetz. KNOWN ISSUE for Day 3 eval: dense legalese matches strongly on exact German terms users search, but it is the WRONG register to surface to a pregnant user — plan to prefer plain-language sources for user-facing answers and cite this statute only as supporting basis, using authority_tier as the ranking signal. robots.txt: allow-all (verified 2026-08-03)."
+    status: superseded
+    superseded_by: fam_mutterschutz
+    pairs_with: []
+    notes: "SUPERSEDED (Phase 1c). The gesetze-im-internet.de statute ROOT serves only the Inhaltsuebersicht — a table of contents (§§ 1-34 titles, ~2.8k chars, ZERO normative text). The actual law lives on 34 per-paragraph pages. NOT ingested/cited. Decision NOT to fetch the §§: (1) 34 more URLs is a crawl, not curation; (2) it is a fourth site-specific boilerplate family to maintain; (3) legalese is the wrong register for the user — the federal portal (fam_mutterschutz) is the authoritative plain-language source we surface. Statute citation is deferred to the README roadmap as a supporting-EVIDENCE layer, not a user-facing one. Signal that flagged this: clean extraction REDUCED it by only -9.2% (it grew, as TOC -> Markdown table) — a doc that loses almost nothing to boilerplate stripping likely has no prose; pair this with the 500-char stub floor as a corpus-validation heuristic. Retained as a provenance record of the correction. robots.txt: allow-all (verified 2026-08-03)."

@@ -19,7 +19,16 @@ can't find, or don't know the German terms for, information that officially exis
 
 ## Status
 
-Day 1 — corpus acquisition and provenance. See `DAY1_LOG.md`.
+Day 1–2 — corpus acquisition, provenance, clean extraction. See `DAY1_LOG.md`
+and `PHASES.md`. Next: heading-aware chunking.
+
+## Roadmap
+
+- **Statute text as a supporting-evidence layer.** The corpus answers from
+  official *plain-language* sources; primary law (e.g. MuSchG on
+  gesetze-im-internet.de) is intentionally out of the user-facing retrieval set —
+  its register is wrong for the reader. A later layer may cite specific paragraphs
+  as *supporting evidence* beneath a plain-language answer, not as the answer.
 
 ## Layout
 
