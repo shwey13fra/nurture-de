@@ -1,7 +1,11 @@
-# Corpus — never track fetched or derived content
+# Corpus — ignore what we can't redistribute (someone else's fetched content)
+# or what's large/rebuildable. Derived-ness alone is NOT the criterion.
+# (gitignore has no inline comments — keep patterns on their own lines.)
+# data/raw/ and data/processed/: third-party HTML/Markdown — redistribution constraint.
 data/raw/
 data/processed/
-data/chunks.jsonl
+# data/chunks.jsonl is derived too, but carries no redistribution constraint and is
+# small (748K) — TRACKED so the reasoned taxonomy is diffable without running Python.
 
 # Vector store
 chroma_db/

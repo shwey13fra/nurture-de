@@ -13,8 +13,10 @@ place to understand *why the corpus looks the way it does*.
 | 1  | Corpus acquisition & provenance (`sources.yaml`, `fetch.py`, robots) | done |
 | 1b | Clean re-extraction (`extract.py`, per-domain selectors → Markdown)  | done |
 | 1c | Statute reclassified `superseded` (TOC, not law text)                | done |
-| 2  | Heading-aware chunking (`chunk.py` → `data/chunks.jsonl`)             | **done** |
-| 3  | Embedding & vector index                                             | next |
+| 2  | Heading-aware chunking (`chunk.py` → `data/chunks.jsonl`)             | done |
+| 3  | Metadata annotation (`annotate.py`: topic/subtopic/user_type/insurance) | **done** |
+| 3b | Environment migration (3.11 venv, CPU torch, requirements.txt)        | next |
+| 4  | Embedding & vector index (E5 + Chroma + BM25)                         | planned |
 
 ---
 

@@ -75,9 +75,51 @@
   Active corpus is now **22** (federal 18, statutory-insurer 4, primary-law 0);
   superseded 2 (`bmas_mutterschutzgesetz`, `gii_muschg_2018`); 24 entries total.
 
+## 2026-08-05 — Day 3 (metadata annotation)
+
+- **Metadata applied by a deterministic annotator, not per-chunk model calls.**
+  `src/annotate.py`: default-by-source + explicit `(source_id, slug)` override
+  tables for topic/user_type/insurance_type; ordered keyword rules for subtopic.
+  Rationale: matches the project's auditable-selection ethos (Phase-1b), is
+  idempotent/re-runnable, and makes every override spot-checkable. `chunks.jsonl`
+  is derived/git-ignored, so regeneration is safe.
+
+- **Taxonomy reconstructed after the reviewed proposal was lost.** The proposal
+  the reviewer approved was produced in an un-journaled prior session and was
+  not on disk. Chose to reconstruct from corpus + the five decisions and flag
+  the baseline + re-derived override lists as reconstructed, rather than
+  fabricate "the 19 / the 3-4" as if retrieved. Fabricating provenance in a
+  provenance project is the failure mode the corpus exists to prevent. Lesson →
+  Past Mistakes: a "STOP for review" artifact (Task 5 metadata proposal) must be
+  written to `knowledge/` at creation, not left in session context.
+
+- **Split vs collapse is decided by cost-of-wrong, not by count.** `Beamtin` got
+  its own `civil-servant` value at ~1 section (distinct legal regime; wrong
+  regime = wrong answer); `Schülerin` collapsed into `student` at similar count
+  (overlapping guidance, out of persona scope; only cost is a missed nuance).
+  Same governing principle, opposite outcomes — recorded in full in the Day-3
+  session journal because being able to explain the asymmetry is what shows the
+  vocabulary was reasoned, not transcribed.
+
+- **`any` as the majority user_type/insurance value is correct, not a defect.**
+  It denotes "no persona/insurance filter applies." A >40% *topic* value would
+  be non-discriminating; a >40% `any` is the expected absence-of-constraint
+  bucket that every filtered query falls back to.
+
 - **Near-zero boilerplate reduction is itself a stub signal.** `gii_muschg_2018`
   *grew* under clean extraction (-9.2%: TOC → Markdown table). Generalized: a
   document that loses almost nothing to boilerplate stripping probably has no prose
   content. Pair "reduction ≈ 0% or negative" with the existing <500-char floor as a
   two-pronged corpus-validation heuristic — either alone misses cases the other
   catches (a long TOC passes the char floor; a short real snippet has high reduction).
+
+- **Ignore policy reversal: `data/chunks.jsonl` is now TRACKED.** Day-2 ignored it
+  as "derived." Corrected: derived-ness alone is not the criterion. `data/raw/` and
+  `data/processed/` are ignored because they redistribute **someone else's fetched
+  content** — `chunks.jsonl` carries no such constraint, is small (748K), and its
+  whole value this phase is that the taxonomy is *reasoned*. If reading a chunk's
+  tags required installing Python 3.11 + 2.2GB of model weights, that reasoning is
+  invisible in the repo; tracking it also makes tag changes **diffable** (a re-chunk
+  shows which tags moved, not just a distribution delta). New rule: **derived data is
+  ignored when it can't be redistributed OR is large — not merely because it's
+  derived.** (The `chroma_db/` vector store stays ignored: large + rebuildable.)
