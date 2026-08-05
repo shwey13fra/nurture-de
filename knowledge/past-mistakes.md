@@ -59,3 +59,28 @@ heuristic conflated "few chunks" with "bad value."
 set must weight filtering evals on the fields that actually discriminate
 (`user_type`: 84 real-valued chunks), or the eval silently re-tests the same
 handful of chunks. Check value distribution BEFORE designing filter evals.
+
+---
+
+## PM-4 — Diagnose the resource wall before blaming (or downgrading) the design
+
+**Rule:** When a build fails with an out-of-memory / resource error, identify the
+*actual* constraint before changing a design parameter to "make it fit." A model
+downgrade, smaller batch, or lower precision only helps if model size is the wall —
+if the real limit is elsewhere (disk, file handles, or here, the **Windows commit
+charge**), the downgrade fails identically AND corrupts interpretation: a later
+quality result gets misattributed to the weaker design instead of the environment.
+The tell that it is NOT model size: the failure happens *before* the model loads
+(e.g. a 67 MB **download** buffer fails), or a tiny allocation fails while GBs of
+physical RAM read as "free."
+
+**Incident (2026-08-05):** `index.py` OOM'd building the e5-large index. The instinct
+was "e5-large is 2.2 GB, drop to e5-base." Wrong axis. Diagnosis showed physical RAM
+was fine (1.3 GB free) but the **commit charge was at 98.7%** (0.82 GB headroom), with
+**44 GB of committed memory unattributable to any process or kernel pool** — a leak a
+reboot clears. The 67 MB *download* buffer was what failed, so e5-base/small would have
+failed the same way. Downgrading would have wasted the model choice and mis-framed the
+cross-lingual (Test 1) baseline. Correct move: measure commit limit vs committed,
+per-process private bytes, pool, and disk free; free commit (reboot / close the hog);
+keep the model. Precision/batch (fp16, batch 8) were still applied as genuine
+footprint reductions — but as help *after* the wall is understood, not as a guess.
