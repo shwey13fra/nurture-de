@@ -19,8 +19,21 @@ can't find, or don't know the German terms for, information that officially exis
 
 ## Status
 
-Day 1–2 — corpus acquisition, provenance, clean extraction. See `DAY1_LOG.md`
-and `PHASES.md`. Next: heading-aware chunking.
+Phases 1–3 done — corpus acquisition & provenance, clean extraction, heading-aware
+chunking, and deterministic metadata annotation (201 chunks). See `BUILD_JOURNAL.md`
+and `PHASES.md`. Next: embedding + hybrid (dense + BM25) vector index.
+
+## Requirements & setup
+
+**Python 3.11+** (floor is 3.10, verified on 3.11.9). The earlier 3.7.8 stack could
+not run chromadb, the MCP SDK, or LangGraph — hence the migration in Phase 3b. Torch
+is pinned to the **CPU-only** wheel (no GPU on this machine).
+
+```bash
+py -3.11 -m venv .venv                 # dedicated venv; leave any 3.7 stack untouched
+.venv/Scripts/python -m pip install -r requirements.txt
+# (requirements.txt embeds the PyTorch CPU index for the +cpu torch wheel)
+```
 
 ## Roadmap
 

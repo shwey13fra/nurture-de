@@ -15,8 +15,8 @@ place to understand *why the corpus looks the way it does*.
 | 1c | Statute reclassified `superseded` (TOC, not law text)                | done |
 | 2  | Heading-aware chunking (`chunk.py` → `data/chunks.jsonl`)             | done |
 | 3  | Metadata annotation (`annotate.py`: topic/subtopic/user_type/insurance) | **done** |
-| 3b | Environment migration (3.11 venv, CPU torch, requirements.txt)        | next |
-| 4  | Embedding & vector index (E5 + Chroma + BM25)                         | planned |
+| 3b | Environment migration (3.11 venv, CPU torch, requirements.txt)        | **done** |
+| 4  | Embedding & vector index (E5 + Chroma + BM25)                         | next |
 
 ---
 
@@ -68,6 +68,47 @@ Question-anchoring reads a convention specific to Familienportal (see P1). It wo
 **not** transfer to a differently-structured client — and that is the job, not a
 weakness. A generic splitter would have produced quietly worse retrieval on this
 corpus with no signal as to why.
+
+---
+
+## Phase 3 — Metadata annotation
+
+**Output:** all 201 chunks carry `topic` / `subtopic` / `user_type` /
+`insurance_type` (0 nulls), filled by `src/annotate.py` — a **deterministic**
+annotator (default-by-source + `(source_id, slug)` override tables + ordered
+keyword rules), not per-chunk model calls. Idempotent: a re-run reproduces the
+same distribution exactly, which is the property worth more than a one-off pass.
+
+The reviewed taxonomy proposal was produced in a prior session that was **never
+journaled to disk** and was gone on a cold boot — so it was **reconstructed** from
+the corpus + recorded decisions and every divergence flagged, rather than
+fabricating the lost "19 / 3-4" counts (the re-derived count came out 16). This is
+PM-1: a review artifact must be written to `knowledge/` at creation. Full reasoning
+(split-vs-collapse by cost-of-wrong; `any`-is-correct; thin-value-vs-thin-corpus)
+in `knowledge/sessions/2026-08-05-day3-metadata.md` and `knowledge/decisions.md`.
+
+`data/chunks.jsonl` is now **tracked** (reversing the Day-2 ignore): derived data is
+ignored when it can't be redistributed OR is large — not merely because it's derived.
+
+## Phase 3b — Environment migration (the interpreter was the blocker)
+
+**Lesson (version floor is a project-wide gate, not a per-feature dependency).** The
+build ran on **Python 3.7.8**, which ships no wheel for tiktoken (worked around in
+Phase 2) and — more importantly — **cannot install chromadb, the MCP SDK, or
+LangGraph** (all require ≥3.10). That interpreter silently blocked half the remaining
+roadmap, not one feature. The right move was to migrate **before** embedding, while
+201 chunks existed and nothing was embedded yet — the cheapest possible moment.
+
+**What was done:** a dedicated `.venv` on **Python 3.11.9**, installed **alongside**
+the 3.7 stack (that pinned torch 1.13.1 / transformers 4.30.2 environment looks
+deliberate — likely another project — and was left untouched). Torch is the
+**CPU-only** wheel (`2.13.0+cpu`, CUDA build `None`, no GPU here) from the PyTorch CPU
+index. Everything pinned in `requirements.txt` (with the CPU index embedded); Python
+floor recorded there and in the README. Guard verified before proceeding: interpreter
+3.11.9, active venv is the project's own, sentence-transformers 5.6.1, chromadb 1.5.9,
+rank-bm25 0.2.2. (The venv + deps had in fact been set up in an un-journaled prior
+session — another instance of PM-1's "work lives in context, not on disk"; Phase 3b's
+real deliverables were the durable ones: `requirements.txt`, README floor, this entry.)
 
 ---
 
