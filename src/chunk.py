@@ -32,12 +32,109 @@ PROC = os.path.join(ROOT, "data", "processed")
 SOURCES = os.path.join(ROOT, "data", "sources.yaml")
 OUT = os.path.join(ROOT, "data", "chunks.jsonl")
 
-# cl100k encoder lives in the session scratchpad (vocab cached there).
-sys.path.insert(0, r"C:\Users\shwet\AppData\Local\Temp\claude\C--Users-shwet-nurture-de\ffd95014-4bed-4d60-a778-877979eda3e4\scratchpad")
-import cl100k  # noqa: E402
+# cl100k encoder + vocab are vendored in-repo (src/vendor) so the tracked
+# chunks.jsonl is reproducible offline (PM-5). No external/Temp path.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from vendor import cl100k  # noqa: E402
 
 TOKENIZER = "cl100k_base"
 FLOOR, TARGET, CAP = 250, 500, 800
+
+# --- E5 embedding-tokenizer cap ---------------------------------------------
+# The chunker sizes structure in cl100k (a proxy), but the corpus is embedded
+# with multilingual-e5-large, which TRUNCATES at 512 tokens. A proxy tokenizer
+# cannot bound the real one (register P7): for the longest German chunks cl100k
+# UNDERcounts vs E5 (max cl100k 791 vs E5 906), the unsafe direction. So after
+# the cl100k cascade we re-split any chunk whose *full embedded string*
+# ("passage: " + heading breadcrumb + text) exceeds E5_SAFE, measured with the
+# actual E5 tokenizer. E5_SAFE leaves a margin under 512 for special tokens.
+E5_MODEL = "intfloat/multilingual-e5-large"
+E5_HARD, E5_SAFE = 512, 500
+E5_PASSAGE_PREFIX = "passage: "  # must match src/retrieval.py PASSAGE_PREFIX
+_e5_tok = None
+
+
+def e5_tok():
+    """Lazy singleton — loads the E5 *tokenizer only* (no 2.2GB model weights)."""
+    global _e5_tok
+    if _e5_tok is None:
+        from transformers import AutoTokenizer
+        _e5_tok = AutoTokenizer.from_pretrained(E5_MODEL)
+    return _e5_tok
+
+
+def e5_count(embed_text):
+    """E5 token length of exactly what the model sees at index time:
+    PASSAGE_PREFIX + embed_text (embed_text already carries the heading prefix)."""
+    return len(e5_tok()(E5_PASSAGE_PREFIX + embed_text, add_special_tokens=True)["input_ids"])
+
+
+def _e5_over(prefix, text):
+    """True if this chunk's full embedded string would truncate under E5_SAFE."""
+    return e5_count(prefix + "\n" + text) > E5_SAFE
+
+
+def _e5_units(prefix, text):
+    """Break text into packing units, each <= E5_SAFE embedded. Paragraphs stay
+    whole; a paragraph over the cap is sentence-packed (sentences joined by ' ')."""
+    units = []
+    for para in re.split(r"\n{2,}", text):
+        para = para.strip()
+        if not para:
+            continue
+        if not _e5_over(prefix, para):
+            units.append(para)
+            continue
+        cur = ""
+        for sent in re.split(r"(?<=[.!?])\s+", para):
+            sent = sent.strip()
+            if not sent:
+                continue
+            cand = sent if not cur else cur + " " + sent
+            if cur and _e5_over(prefix, cand):
+                units.append(cur)
+                cur = sent
+            else:
+                cur = cand
+        if cur:
+            units.append(cur)
+    return units
+
+
+def _split_to_e5(prefix, text):
+    """Re-split one over-budget chunk into BALANCED pieces, each within E5_SAFE.
+    n = ceil(total/E5_SAFE) pieces, packed toward total/n so no tiny sub-floor tail
+    is created (a 524-token chunk -> ~262/262, never 500/24)."""
+    units = _e5_units(prefix, text)
+    total = e5_count(prefix + "\n" + text)
+    n = max(2, -(-total // E5_SAFE))     # integer ceil
+    target = total / n
+    pieces, cur = [], ""
+    for u in units:
+        cand = u if not cur else cur + "\n\n" + u
+        hit_cap = _e5_over(prefix, cand)
+        at_target = cur and e5_count(prefix + "\n" + cur) >= target
+        if cur and (hit_cap or at_target):
+            pieces.append(cur)
+            cur = u
+        else:
+            cur = cand
+    if cur:
+        pieces.append(cur)
+    return pieces
+
+
+def enforce_e5_cap(texts, prefix):
+    """Final pass after the cl100k cascade: guarantee every chunk fits E5's 512-token
+    limit, measured on the FULL embedded string (passage prefix + heading breadcrumb +
+    text). Chunks already within budget pass through byte-identical."""
+    out = []
+    for text in texts:
+        if _e5_over(prefix, text):
+            out.extend(_split_to_e5(prefix, text))
+        else:
+            out.append(text)
+    return out
 
 # Hub/index pages: mostly link lists, tagged so retrieval can down-weight rather
 # than drop (they still answer "where do I apply for X"). Identified in Day-2 journal.
@@ -314,7 +411,7 @@ def build_chunks(source, md):
         hp = [authority, h1] + ([root] if root else [])
         prefix = "[" + " › ".join(hp) + "]"
         base_kind = kind_override or ("qa" if u["kind"] == "qa" else "prose")
-        for text in split_texts(u["members"]):
+        for text in enforce_e5_cap(split_texts(u["members"]), prefix):
             content_kind = "table-degraded" if is_table_degraded(text) else base_kind
             chunk_id = "%s__%s__%s" % (sid, slug, sha8(text))
             recs.append({
@@ -337,6 +434,7 @@ def build_chunks(source, md):
                 "heading_path": hp,
                 "section_slug": slug,
                 "token_count": toks(text),
+                "e5_token_count": e5_count(prefix + "\n" + text),
                 "char_count": len(text),
                 "tokenizer": TOKENIZER,
                 "text": text,

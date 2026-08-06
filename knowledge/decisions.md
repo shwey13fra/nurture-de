@@ -123,3 +123,31 @@
   shows which tags moved, not just a distribution delta). New rule: **derived data is
   ignored when it can't be redistributed OR is large — not merely because it's
   derived.** (The `chroma_db/` vector store stays ignored: large + rebuildable.)
+
+## 2026-08-06 — Phase 4 (embedding + index; E5 512-cap fix)
+
+- **The chunker now enforces E5's real 512-token limit, not a cl100k proxy.** cl100k
+  (Phase-2's tokenizer) tracks E5 closely on average (ratio 0.97) but *undercounts* at
+  the long tail, letting 21 chunks truncate at embed time (worst 906 E5 tokens). Added
+  `enforce_e5_cap` in `chunk.py`: a final split measured on the **full embedded string**
+  (`"passage: " + heading breadcrumb + text`) that balances any >500-token chunk into
+  pieces under the limit. Kept cl100k for the structural cascade (re-tuning everything to
+  E5 would shift all 201 boundaries — rejected for blast radius); E5 only guards the hard
+  cap. Surgical: 179/201 chunks unchanged, 22 re-split → 46, total 225, 0 truncated.
+  Each chunk now stores `e5_token_count`. Full reasoning in `BUILD_JOURNAL.md` P7. (→ PM-5
+  reusable rule: measure against the tokenizer that actually enforces the limit.)
+
+- **cl100k is vendored in-repo (`src/vendor/`), not imported from a Temp scratchpad.**
+  The tracked `chunks.jsonl` previously regenerated only via a hardcoded path into a dead
+  session's Temp dir (`chunk.py:36`), which itself read an out-of-repo 1.68 MB vocab blob
+  — the tokenizer defining every chunk boundary was outside version control. Vendored both
+  with a `__file__`-relative path (chose the self-contained pure-Python reimpl + blob over
+  adding `tiktoken`, which would re-download the vocab to an out-of-repo cache — worse for
+  offline reproducibility). A `src/` audit confirmed it was the only out-of-repo read.
+  Rule → PM-5.
+
+- **`chroma_db/` must be wiped before a re-index, not upserted onto.** `ChromaStore.upsert`
+  keys on `chunk_id` and never deletes; after a re-split the old truncated vectors would
+  linger under their old ids. Rebuilds start from a clean `chroma_db/` (gitignored,
+  rebuildable). `bm25.pkl` is fully overwritten by `SparseIndex.build`, so it needs no
+  special handling.

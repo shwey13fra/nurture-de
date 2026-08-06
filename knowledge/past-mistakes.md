@@ -84,3 +84,37 @@ cross-lingual (Test 1) baseline. Correct move: measure commit limit vs committed
 per-process private bytes, pool, and disk free; free commit (reboot / close the hog);
 keep the model. Precision/batch (fp16, batch 8) were still applied as genuine
 footprint reductions — but as help *after* the wall is understood, not as a guess.
+
+---
+
+## PM-5 — If regenerating a tracked artifact depends on it, it must be in the repo — tooling, not just data
+
+**Rule:** A committed/tracked artifact is only as reproducible as the *code and data
+that regenerate it*. If any part of that toolchain — a script, a tokenizer, a vocab
+file, a config — lives outside version control (an absolute path, a temp directory,
+a machine-local cache, a network-fetched blob), the artifact and its provenance have
+silently diverged: the file is versioned but the thing that defines it is not. When
+you touch such a pipeline, **audit the whole regeneration path** for out-of-repo reads
+and pull every one of them in-repo (with a relative path), not merely the one that
+tripped you.
+
+**Incident (2026-08-06):** `data/chunks.jsonl` was tracked (Day-3 decision) *for its
+auditability*, but `chunk.py:36` imported its cl100k tokenizer via a hardcoded path
+into a **prior session's Temp scratchpad** (`…/ffd95014-…/scratchpad/cl100k.py`), which
+itself read a **second** out-of-repo file — the 1.68 MB `cl100k_base.tiktoken` vocab
+blob. The tokenizer that defines *every chunk boundary* was one Windows temp-clean away
+from making the corpus unregenerable. Vendored both into `src/vendor/` with a
+`__file__`-relative path; a `src/` audit confirmed it was the only out-of-repo read in
+the pipeline. **This is the same class as PM-1** (load-bearing work living outside
+version control — there it was a review artifact left in session context; here the
+regeneration tooling). It has now recurred in two different forms, which is why it earns
+a rule of its own.
+
+**Numbering note:** "PM-4" was already taken (diagnose-the-resource-wall). This lesson
+is filed as **PM-5** deliberately rather than overwriting PM-4 — the request said
+"add as PM-4" but that slot is occupied; flagging beats silently clobbering an existing
+lesson (itself a small instance of the honesty-over-agreement bar).
+
+**Test before trusting a tracked artifact:** "If Temp were wiped and every machine-local
+cache cleared right now, could I regenerate this file from the repo alone?" If no, the
+toolchain isn't really versioned — pull it in.

@@ -16,7 +16,7 @@ place to understand *why the corpus looks the way it does*.
 | 2  | Heading-aware chunking (`chunk.py` → `data/chunks.jsonl`)             | done |
 | 3  | Metadata annotation (`annotate.py`: topic/subtopic/user_type/insurance) | **done** |
 | 3b | Environment migration (3.11 venv, CPU torch, requirements.txt)        | **done** |
-| 4  | Embedding & vector index (E5 + Chroma + BM25)                         | **code committed, UNRUN** (commit-OOM → P6) |
+| 4  | Embedding & vector index (E5 + Chroma + BM25)                         | **done** — validated (3-test gate green; E5 512-cap enforced → P7) |
 
 ---
 
@@ -109,6 +109,46 @@ floor recorded there and in the README. Guard verified before proceeding: interp
 rank-bm25 0.2.2. (The venv + deps had in fact been set up in an un-journaled prior
 session — another instance of PM-1's "work lives in context, not on disk"; Phase 3b's
 real deliverables were the durable ones: `requirements.txt`, README floor, this entry.)
+
+## Phase 4 — Embedding & vector index (E5 + Chroma + BM25)
+
+**Output:** **225 chunks** embedded to a 1024-dim Chroma collection (cosine) + a BM25
+sparse index, behind one swappable `search()` interface (`src/retrieval.py`). The
+three-test validation gate passed post-reboot (P6 was the environment, not the model).
+
+**Model — `intfloat/multilingual-e5-large`, kept deliberately.** The whole EN/DE design
+rests on a cross-lingual space: an English query must retrieve a German passage with
+zero shared words. Test 1 measured it directly — parallel `gesund_vorsorge_de` ↔
+`gesund_vorsorge_en` content, **mean best-match cosine 0.864** (gate: >0.85; ~0.5 would
+have meant the multilingual space collapsed and the test design with it). Loaded in
+**fp16** (~1.1 GB, no fp32 peak) at **batch 8** — genuine footprint reductions, not a
+model downgrade (see P6/PM-4). Vectors are cast to fp32 and L2-normalised, so cosine ==
+inner product. Note: fp16 on this CPU has no hardware acceleration, so a full 225-chunk
+build takes ~35 min — a runtime cost, not a quality one.
+
+**The E5 prefix gotcha (why it's verified, not assumed).** E5 is *asymmetric*: passages
+must be embedded with `passage: ` and queries with `query: `; omitting a prefix does not
+error, it silently degrades retrieval. So the applied prefix is recorded per vector
+(`embed_prefix`) and Test 2 proves it changes the vector (`cosine(with, without) =
+0.97 < 1`, retrieval delta measurable). This is the same "verify, don't trust a
+self-report" discipline as P4.
+
+**E5 vs cl100k tokens (the sizing the chunker asked to confirm — and it didn't hold).**
+The chunker sizes in cl100k as a proxy; the model truncates in E5 at 512. Across the
+225 chunks the two are close on average (**mean E5/cl100k ratio 0.97**; E5 median 301
+vs cl100k 315; E5 DE-median 299, EN-median 320 — German's compounds keep DE token
+counts *below* EN even in E5). But "close on average" is not "bounded": the first build
+flagged **21 chunks over 512 E5 tokens** (worst 906, ~43% of a core maternity-pay answer
+dropped from its dense vector), because at the long tail cl100k *undercounts* relative
+to E5 — the opposite of the assumed safe direction. Fixed by enforcing E5's real limit
+in the chunker (→ P7); post-fix **max E5 = 500, 0 chunks truncated**.
+
+**Hybrid, not dense-only.** Dense (E5) carries cross-lingual + sub-compound semantics;
+BM25 over the *displayed* `text` carries exact rare-token matches (whole compounds like
+`Mutterschutzfrist`). Fused with Reciprocal Rank Fusion (rank-based, so the two
+incomparable score scales are never normalised against each other). Smoke retrieval
+(Test 3) confirmed the split works: DE queries surface DE sources, EN→EN, and
+"Wie finde ich eine Hebamme?" returns the midwife-support pages.
 
 ---
 
@@ -226,3 +266,49 @@ commit by rebooting; re-verify commit headroom *before* loading anything post-re
 The lesson as a reusable rule is PM-4 (diagnose the resource wall before blaming the
 design). Phase 4 code is committed **unrun** at `0442c86`; the three-test validation
 gate is still outstanding, to run once the box has headroom (`knowledge/sessions/2026-08-05-phase3b-4-embedding-blocked.md`).
+
+**Resolved (2026-08-06):** rebooted → free commit 0.82 GB → 43 GB; the build ran with no
+OOM (headroom, not a smaller model, was the fix — as P6 predicted). Gate green: Test 1
+cross-lingual **0.864** (>0.85), Test 2 prefix verified, Test 3 smoke sane. Phase 4 is
+**done**. The build's E5-token report then surfaced a *new* problem → P7.
+
+### P7 — A proxy tokenizer can't bound the real one (E5 512-token truncation)
+
+The chunker (`chunk.py`) sizes chunks in **cl100k** tokens (a Phase-2 proxy, chosen
+before the embedding model existed); the corpus is embedded with **multilingual-e5-large**,
+whose tokenizer **truncates at 512**. The first index build's E5-token report flagged
+**21 chunks over 512** — worst `tk_maternity_pay` "How much is maternity pay" at **906**
+E5 tokens, ~43% of a core answer silently dropped from its dense vector (a citation
+project losing the back half of a "how much do I get paid" answer is the exact failure
+the corpus exists to prevent). BM25 over the full `text` cushioned it, but only on
+literal word overlap, not meaning.
+
+**The falsified prediction (the part worth keeping).** The Phase-2 assumption was that
+cl100k *over*-splits German compounds, so it would *over*count vs E5 — the *safe*
+direction to be wrong in (over-splitting only makes chunks smaller than the real limit).
+Measurement showed the reverse **at the tail**: for the longest chunks cl100k
+*under*counts (max cl100k 791 vs E5 906) — the *unsafe* direction, which is precisely
+what let 21 chunks past the real limit. On average the two are close (ratio 0.97), which
+is exactly the trap: closeness-in-the-mean is not a bound-at-the-tail. **A wrong
+prediction caught by measurement is a better register entry than a right one that was
+never tested.**
+
+**Response.** Add an E5-aware final split in the chunker (`enforce_e5_cap`), measured on
+the **full embedded string** — `"passage: " + [heading breadcrumb] + text`, exactly what
+the model tokenizes — never on `text` alone (that would reintroduce the same error one
+layer down). Any chunk over a safe **500**-token budget (12-token margin under 512) is
+re-split into *balanced* pieces (`n = ceil(tok/500)`, packed toward `total/n`, so a
+524-token chunk becomes ~262/262, not 500/24). Structure still comes from the cl100k
+cascade; E5 only enforces the hard truncation limit. Surgical by construction: **179 of
+201 chunks unchanged byte-for-byte**, **22 re-split → 46 pieces** (the 22nd was in the
+501–512 over-margin band, split though not yet truncating), total **225**. Post-fix
+**max E5 = 500, 0 truncated**; re-annotation was automatic (`annotate.py` keys on
+`section_slug`/`heading_path`, which sub-chunks inherit); guards pass, 0 nulls; Test 1
+moved **0.867 → 0.864** (−0.003, within noise — splitting the 2 EN chunks of the Test-1
+pair left cross-lingual alignment intact). Each chunk now stores `e5_token_count`, so
+"nothing truncates" is checkable from the tracked `chunks.jsonl` itself.
+
+**Reusable rule:** a proxy tokenizer cannot bound the real one. If a hard limit exists
+downstream, measure against the actual tokenizer that enforces it — not a proxy that
+merely correlates. (The same build also surfaced PM-5: the cl100k proxy itself lived
+outside the repo, so the tracked corpus wasn't reproducible; both were fixed together.)
