@@ -177,3 +177,35 @@
   validation falsified the a-priori "BM25 beats dense on a bare compound" argument (E5 is
   compound-aware); BM25's measured value is surfacing exact/edge chunks dense buries
   (query 4: dense 11 → fused 3). Full evidence + lesson in `BUILD_JOURNAL.md` P8.
+
+## 2026-08-06 — Phase 6 (generation)
+
+- **The answer-policy system prompt is a human-owned file, not code.** It lives in
+  `src/prompts/answer_system_prompt.md` and `generate.py` loads it per call. The judgment
+  layer (what to refuse, when to ask, how to cite) belongs to the reviewer; the code owns
+  everything around it. Editing the file changes behaviour with no code change.
+
+- **Report-vs-determine, not blanket amount-refusal.** "Never state a benefit amount"
+  contradicts "answer only from context" — a source-stated figure is a corpus fact, and
+  suppressing it makes the tool useless for the highest-demand questions. Shipped rule:
+  report what a source says (amounts/durations/conditions included, cited), never tell a
+  user what applies to *them* (no "you will receive €X", no "you are eligible"). Send
+  personal determinations to the deciding authority (insurer/employer/office).
+
+- **Retrieved content is untrusted data, wrapped and escaped.** Chunks go in the user turn
+  inside `<retrieved_documents>`/`<document>`; text is HTML-escaped so a chunk cannot forge
+  a document boundary; the system prompt declares the block is data, never instructions.
+  Chosen from the start (not retrofitted) because the corpus contains real promotional/hub
+  text. A poisoned chunk was defeated in validation.
+
+- **Model: Claude Opus 5 for generation, adaptive thinking, system prompt cached.** Opus 5
+  is the generator (held constant so Phase-8 can vary retrieval config cleanly). The
+  refuse/ask/answer decision benefits from adaptive thinking. `stop_reason == "refusal"`
+  (classifier) is handled before reading content. The **LLM-as-judge for Phase 8 will be a
+  cheaper model** — faithfulness checking doesn't need frontier reasoning, and a different
+  judge model avoids grading-its-own-homework bias (recorded in the Phase-8 forward note).
+
+- **Context order: top-4 post-RRF, most-relevant LAST.** Models attend most reliably to the
+  end of context, so rank-1 is the final document. The Phase-8 reranker replaces the plain
+  top-4 slice at this seam. Assembled size reported in cl100k tokens (vendored tokenizer,
+  no API round-trip).
