@@ -7,8 +7,9 @@ data/processed/
 # data/chunks.jsonl is derived too, but carries no redistribution constraint and is
 # small (748K) — TRACKED so the reasoned taxonomy is diffable without running Python.
 
-# Vector store
+# Vector store + sparse index (both derived, large/rebuildable)
 chroma_db/
+data/bm25.pkl
 
 # Python
 .venv/
