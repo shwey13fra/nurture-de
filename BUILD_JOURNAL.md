@@ -313,6 +313,17 @@ for generation only** also keeps the config comparison clean: the variable under
 the retrieval config, so the generator must be held constant and the judge must not be the
 same model doing the answering (avoids grading-its-own-homework bias).
 
+### Known limitation — freshness disclosure is untestable until a re-fetch
+
+Every source's `last_verified` is **2026-08-03**: the whole corpus was fetched on a single
+day, so there is **no date spread**. The answer prompt flags information older than ~1 year
+(Rule 7), but with every date identical that path cannot be exercised — and the Phase-7
+golden set therefore cannot test recency, which is why `disclose_conflict` was narrowed to
+`authority_tier`/`prefer_tier` (tier preference is testable; recency is not). The freshness
+behaviour is **implemented but currently unverifiable**; it becomes exercisable only after a
+re-fetch months later produces a real spread of `last_verified` dates. Stated so it is not
+mistaken for tested.
+
 ---
 
 ## Problem register
