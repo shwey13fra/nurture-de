@@ -339,6 +339,34 @@ writing real-user questions surfaces it. Three consequences, all recorded:
    from Phase 1. Recorded for the Phase-13 design: the product needs *both* a retrieval layer
    and a referral layer, and that only became visible by writing real questions.
 
+### Finding — a Q&A corpus biases corpus-derived eval questions toward too-easy
+
+Building the corpus-derived half of the golden set (questions written *backwards from the
+coverage map* to test retrieval), **5 of the first 8 accidentally restated the heading of the
+chunk they targeted**. The cause is structural, not carelessness: **Familienportal is a Q&A
+FAQ — its headings *are* user questions** ("Gibt es Mutterschutz für Studentinnen?"), so any
+natural question hitting those sections collides with the heading by construction. Left in,
+they'd inflate recall@5 while measuring **lexical overlap, not retrieval** — BM25 wins a
+verbatim-heading question trivially, every config scores 100%, and nothing distinguishes
+dense from hybrid from reranked. Fixed by rephrasing into lay vocabulary the heading doesn't
+use (describe the *need*, not the term); the two best cases now describe a concept without
+naming it (`c05` Partnerschaftsbonus, `c09` Familienhebamme) — which is also the product's
+core job.
+
+**Cross-phase connection worth recording:** this is the *same* structural property that
+forced **question-anchored chunking in Phase 2** (P1 — hierarchy encoded by question-headings,
+not markup). One characteristic of the source — it's an FAQ — produced two consequences two
+phases apart: it dictated how we *chunk*, and it biases how we *evaluate*. That only surfaces
+if you track the corpus's properties across phases instead of treating each phase fresh.
+
+**Verification catch (also recorded):** a proposed hard case ("Wie wirkt sich Mutterschaftsgeld
+auf mein Elterngeld aus?") assumed its content spanned two documents. It didn't — the offset
+rule lives only in `fam_elterngeld_faq`. Caught by checking before proposing; replaced with
+two verified hard cases (`h1` cross-section synthesis in the Elterngeld FAQ; `h2` the
+Mutterschutzlohn↔Mutterschaftsgeld disambiguation, flagged as the first case to examine when
+results return). The discipline: verify the corpus supports a case *before* it enters the
+golden set, so the eval never blames the system for a mis-specified question.
+
 ### Known limitation — freshness disclosure is untestable until a re-fetch
 
 Every source's `last_verified` is **2026-08-03**: the whole corpus was fetched on a single

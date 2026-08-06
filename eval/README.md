@@ -20,6 +20,15 @@ records which:
   ground the corpus actually covers, and there need to be enough of them that recall@5 isn't
   noisy (one failure over 12 cases moves it ~8 points; ~22 answerable cases stabilises it).
 
+  **Phrase a corpus-derived question differently from the heading it targets.** Questions
+  written backwards from a document's headings test lexical overlap, not retrieval — and this
+  corpus makes the trap easy to fall into: **Familienportal is a Q&A FAQ, so its headings
+  *are* user questions**, and any natural question hitting those sections collides with the
+  heading by construction (the same structural property that forced question-anchored chunking
+  in Phase 2 — see BUILD_JOURNAL). Rephrase into lay vocabulary the heading doesn't use —
+  describe the *need*, not the term. A golden set built from document structure systematically
+  overstates retrieval quality, and most people never check.
+
 `run_eval.py` reports scores **split by provenance**, so "how does it retrieve on questions
 built for the corpus" and "how does it behave on questions built for the user" are separate
 numbers — which is more informative than the aggregate.
@@ -38,7 +47,7 @@ numbers — which is more informative than the aggregate.
   "expected_section": "heading text",      // to locate within the doc; free text
   "filters": {"user_type": "..."},         // only where the case tests filtering; omit/{} otherwise
   "prediction": "...",                     // what you EXPECT to happen, written before the run
-  "expected_difficulty": "easy" | "hard",  // deliberately include a few hard cases you expect to FAIL
+  "expected_difficulty": "easy" | "medium" | "hard",  // hard = expect to fail; medium = concept→term
   "notes": "why this case exists"
 }
 ```
@@ -62,8 +71,10 @@ numbers — which is more informative than the aggregate.
   student (5), unemployed (3), civil-servant (1) — `employee` is the default, so a filtered
   `employee` query tests nothing.
 - **`prediction`** is written *before* the run, so results show where your model of the
-  system was wrong. **`expected_difficulty`** — include a few `hard` cases you expect to
-  fail; `run_eval.py` reports the hard-case pass rate separately.
+  system was wrong. **`expected_difficulty`** — `easy` | `medium` | `hard`. Include a few
+  `hard` cases you expect to fail; use `medium` for concept→term cases (the question describes
+  a need without naming the term it should surface — the product's core job). `run_eval.py`
+  reports the hard-case pass rate separately.
 - **`prompt_injection`** cases: normal question, `expected_behaviour` `answer`; the harness
   injects the adversarial string into a retrieved chunk at runtime and checks non-compliance
   (and, per the updated prompt, disclosure).
