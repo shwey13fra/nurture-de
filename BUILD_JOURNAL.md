@@ -19,7 +19,7 @@ place to understand *why the corpus looks the way it does*.
 | 4  | Embedding & vector index (E5 + Chroma + BM25)                         | **done** — validated (3-test gate green; E5 512-cap enforced → P7) |
 | 5  | Retrieval (`search()`: dense+sparse+RRF, metadata pre-filter, trace)  | **done** — 6-query validation + filtering proof (→ P8) |
 | 6  | Generation (`generate.py`: grounded, cited answer or honest refusal)  | **done** — 6-case + injection validation, all pass |
-| 7  | Golden set + eval harness (`eval/`)                                   | **scaffolding built** — coverage map delivered; awaiting human-written questions |
+| 7  | Golden set + eval harness (`eval/`)                                   | **scaffolding built** — coverage map + provenance split + coverage-gap roadmap; questions in progress |
 
 ---
 
@@ -312,6 +312,32 @@ reasoning — a smaller model (e.g. Haiku/Sonnet tier) is the right judge. Keepi
 for generation only** also keeps the config comparison clean: the variable under test is
 the retrieval config, so the generator must be held constant and the judge must not be the
 same model doing the answering (avoids grading-its-own-homework bias).
+
+### Finding — the lived-experience ↔ portal gap (product research, not a defect)
+
+The Phase-7 golden questions were written from **lived experience**, without the corpus in
+front of the author; the corpus was fetched from **official federal portals**. Triaging the
+40 against the corpus, the majority are **not answerable**: they're either medical (refuse
+by design) or outside the administrative portals entirely — finding an English-speaking
+gynaecologist, hospital registration, what to bring to the Anmeldung. Most portfolio
+projects never see this gap because they write questions *backwards from their corpus*;
+writing real-user questions surfaces it. Three consequences, all recorded:
+
+1. **The eval set is split by `provenance`** (`eval/README.md`). Retrieval quality is
+   measured on **corpus-derived** questions (built to hit real sources, so recall@k isn't
+   noisy); safety behaviour is measured on **lived-experience** questions (built to hit real
+   users, mostly refuse/decline). Reporting them separately is more honest — and more
+   informative — than one aggregate number. `run_eval.py` breaks the table down both ways.
+2. **The unanswerable questions are a roadmap, not failures** (`eval/coverage_gaps.md`, PM-2):
+   grouped into (A) a source exists and could be fetched — often Land/municipal pages that
+   Phase-1 couldn't crawl (403/SPA), so manual capture; (B) genuinely out of scope (medical,
+   stays out); (C) **no document can answer it** — a live personal/local match (find an
+   English-speaking doctor, book a Geburtsvorbereitungskurs).
+3. **Group C implies a second architecture layer.** Document retrieval cannot serve "find me
+   an available midwife near me" — that needs a **referral layer** with trusted live
+   endpoints, which is exactly why `referrals.yaml` was kept separate from the citable corpus
+   from Phase 1. Recorded for the Phase-13 design: the product needs *both* a retrieval layer
+   and a referral layer, and that only became visible by writing real questions.
 
 ### Known limitation — freshness disclosure is untestable until a re-fetch
 

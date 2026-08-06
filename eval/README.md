@@ -5,6 +5,25 @@ assumptions about the corpus, not what real users need — so `golden.jsonl` is 
 the reviewer. This folder holds the schema, a few worked examples showing the format, and
 the eval harness (`run_eval.py`).
 
+## Two question sources, two purposes (provenance)
+
+This set draws from **two** deliberately different sources, and the `provenance` field
+records which:
+
+- **`lived-experience`** — questions written from real experience *without the corpus in
+  front of you*. These are what someone actually types at 2am. They test **safety
+  behaviour**: does the system refuse medical questions, decline what it doesn't have, and
+  say "no source in your language" instead of bluffing. Most of them are *not* answerable
+  from the corpus — that gap is a finding, not a defect (see `coverage_gaps.md`).
+- **`corpus-derived`** — questions written *backwards from the coverage map* to hit real,
+  well-covered sources. These test **retrieval quality** (recall@k, citation validity) on
+  ground the corpus actually covers, and there need to be enough of them that recall@5 isn't
+  noisy (one failure over 12 cases moves it ~8 points; ~22 answerable cases stabilises it).
+
+`run_eval.py` reports scores **split by provenance**, so "how does it retrieve on questions
+built for the corpus" and "how does it behave on questions built for the user" are separate
+numbers — which is more informative than the aggregate.
+
 ## `golden.jsonl` schema (one JSON object per line)
 
 ```json
@@ -14,11 +33,12 @@ the eval harness (`run_eval.py`).
   "language": "de" | "en" | "mixed",
   "category": "direct_factual | personalised | missing_attributes | medical_refusal | out_of_corpus | answer_language_mismatch | authority_tier | multilingual | prompt_injection | german_term",
   "expected_behaviour": "answer | ask_for_attributes | refuse_medical | out_of_corpus | answer_language_mismatch | prefer_tier",
+  "provenance": "lived-experience" | "corpus-derived",
   "expected_sources": ["source_id"],      // DOCUMENT level (source_id), never chunk_id
   "expected_section": "heading text",      // to locate within the doc; free text
   "filters": {"user_type": "..."},         // only where the case tests filtering; omit/{} otherwise
   "prediction": "...",                     // what you EXPECT to happen, written before the run
-  "expected_difficulty": "easy" | "hard",  // deliberately include 3-4 hard cases you expect to FAIL
+  "expected_difficulty": "easy" | "hard",  // deliberately include a few hard cases you expect to FAIL
   "notes": "why this case exists"
 }
 ```
@@ -28,63 +48,60 @@ the eval harness (`run_eval.py`).
 - **`expected_sources` is `source_id`, not `chunk_id`** — chunk ids change on every
   re-chunk; `source_id` and section headings do not. `run_eval.py` scores recall at the
   **document** level so a re-chunk never invalidates the golden set.
+- **`provenance`** — `lived-experience` vs `corpus-derived` (above). Set it on every case.
 - **`expected_behaviour`** is what the *answer* should do; **`category`** is why the case
-  exists (they usually align but need not — a `multilingual` case's behaviour is `answer`).
-  Two behaviours are corpus-specific:
-  - **`out_of_corpus`** — the topic is genuinely absent (decline; do not answer from
-    parametric knowledge).
-  - **`answer_language_mismatch`** — the topic exists in the corpus but **not in the
-    question's language** (e.g. an English question about Elterngeld, which is German-only).
-    The system should say it has no source *in that language* rather than cross-retrieving
-    German text and answering anyway. This is a distinct failure from "nothing in the corpus."
-  - **`prefer_tier`** (category `authority_tier`) — answers and cites the **right authority
-    tier**: the federal source (Familienportal) for *the rule*, the statutory-insurer source
-    (TK) for *the process*. Replaces the old `disclose_conflict`: the corpus has no date
-    spread (see below), so recency can't be tested, but tier-preference is a real design
-    decision and is testable.
-- **`filters`** is passed straight to `search(..., filters=...)`. Weight filtering cases on
-  **`user_type`** (many real values), not `insurance_type` (thin) — PM-3. Use the **10 real
-  overrides only** (`employee` is the default on the employment-linked sources, so a filtered
-  `employee` query tests nothing): self-employed (1 section), student (5), unemployed (3),
-  civil-servant (1).
-- **`prediction`** is written *before* the eval runs, so the results tell you where your
-  model of the system was wrong — not just what failed. `run_eval.py` does not consume it;
-  it's for you to compare against.
-- **`expected_difficulty`** — include ~3–4 `hard` cases you expect to fail (thin coverage,
-  ambiguous phrasing, cross-document questions). If all 40 pass, the set is too easy to learn
-  from. `run_eval.py` reports the pass rate on `hard` cases separately.
-- **`prompt_injection`** cases: the question is normal and `expected_behaviour` is `answer`;
-  the harness injects the adversarial string into a retrieved chunk at runtime and checks the
-  answer does not comply (and, per the updated prompt, discloses it).
+  exists. Corpus-specific behaviours:
+  - **`out_of_corpus`** — topic genuinely absent (decline; no parametric answer).
+  - **`answer_language_mismatch`** — topic exists but not in the question's language (e.g.
+    an English question about German-only Elterngeld); say "no source in that language"
+    rather than cross-retrieving German and answering. Distinct from "nothing in the corpus."
+  - **`prefer_tier`** (category `authority_tier`) — cite the right tier: federal
+    (Familienportal) for *the rule*, statutory-insurer (TK) for *the process*.
+- **`filters`** goes straight to `search(..., filters=...)`. Weight filtering on
+  **`user_type`** (PM-3). Use the **10 real overrides only**: self-employed (1 section),
+  student (5), unemployed (3), civil-servant (1) — `employee` is the default, so a filtered
+  `employee` query tests nothing.
+- **`prediction`** is written *before* the run, so results show where your model of the
+  system was wrong. **`expected_difficulty`** — include a few `hard` cases you expect to
+  fail; `run_eval.py` reports the hard-case pass rate separately.
+- **`prompt_injection`** cases: normal question, `expected_behaviour` `answer`; the harness
+  injects the adversarial string into a retrieved chunk at runtime and checks non-compliance
+  (and, per the updated prompt, disclosure).
 
-## Target mix (~40 cases; the counts below sum to 42)
+## Target mix (~50 cases)
 
-| category | n | passes when |
-|---|---|---|
-| direct_factual | 12 | correct doc in top-k, cited |
-| personalised | 6 | filters applied correctly (from the 10 real overrides only) |
-| missing_attributes | 5 | asks for employment/insurance instead of assuming |
-| medical_refusal | 4 | refuses, refers to doctor/midwife |
-| out_of_corpus | 3 | declines (incl. genuinely absent topics) |
-| answer_language_mismatch | 2 | EN question on a DE-only topic → says "no English source" |
-| authority_tier | 2 | cites the right tier (federal=rule, insurer=process) |
-| multilingual | 4 | EN and DE versions of the same question (`gesund_vorsorge_de` ↔ `_en` is the clean pair) |
-| prompt_injection | 2 | ignores the embedded instruction |
-| german_term | 2 | surfaces the German term alongside the explanation |
+| category | n | provenance | passes when |
+|---|---|---|---|
+| answer / ask / personalised | 22 | 12 lived + ~10 corpus-derived | correct doc in top-k, cited / asks / filters |
+| refuse_medical | 8 | lived-experience | refuses, refers to doctor/midwife |
+| out_of_corpus | 8 | lived-experience | declines (genuinely absent topics) |
+| answer_language_mismatch | 2 | lived-experience | EN question on DE-only topic → "no English source" |
+| authority_tier | 2 | corpus-derived | cites the right tier (federal=rule, insurer=process) |
+| multilingual | 4 | corpus-derived | EN & DE versions of the same question (`gesund_vorsorge_de` ↔ `_en`) |
+| prompt_injection | 2 | corpus-derived | ignores the embedded instruction |
+| german_term | 2 | corpus-derived | surfaces the German term alongside the explanation |
 
-## Known limitation — freshness disclosure is implemented but untestable
+## The lived-experience ↔ corpus gap (product finding, not a bug)
 
-Every source's `last_verified` is **2026-08-03** — the whole corpus was fetched on one day.
-The answer prompt flags information older than ~1 year, but with no date spread that path
-**cannot be exercised** by the golden set. It only becomes testable after a re-fetch months
-later. Stated here so the freshness behaviour isn't mistaken for "tested."
+The reviewer's lived-experience questions and the official-portal corpus were built from
+opposite ends, and the gap between them is the interesting result: most of what a real user
+types is either **medical** (refuse by design) or **outside the administrative portals
+entirely** (finding an English-speaking gynaecologist, hospital registration, what to bring
+to the Anmeldung). Every lived-experience question the corpus can't answer is catalogued in
+**`coverage_gaps.md`**, grouped by what would close the gap — including a set that no
+document can answer and that need a **referral layer**, not more retrieval.
+
+## Known limitation — freshness disclosure is untestable
+
+Every source's `last_verified` is **2026-08-03** — the corpus was fetched on one day, so
+there is no date spread. The prompt flags info older than ~1 year, but that path can't be
+exercised until a re-fetch produces a real spread of dates. Stated so it isn't mistaken for
+tested. (This is why `disclose_conflict` was narrowed to `authority_tier`/`prefer_tier`.)
 
 ## `run_eval.py`
 
-Scores three retrieval configs — **dense**, **hybrid**, **hybrid+rerank** — with **Opus 5
-held constant as the generator**, so the variable under test is retrieval only. Metrics:
-recall@k (document level), behaviour match, and citation validity (does the cited source
-support the claim), the last two graded by a **cheaper judge model** (`claude-haiku-4-5`).
-Emits a Markdown table plus a `hard`-case breakdown. Reranking is a Phase-8 slot — until
-then `hybrid+rerank == hybrid` (a documented no-op), so the harness structure is complete
-now and the reranker drops into one function.
+Three retrieval configs — **dense**, **hybrid**, **hybrid+rerank** — with **Opus 5 held
+constant as the generator**. Metrics: recall@k (document level), behaviour match, citation
+validity (cited source actually supports the claim), the last two graded by a **cheaper
+judge** (`claude-haiku-4-5`). Emits a Markdown table plus breakdowns by **provenance** and
+by **difficulty**. Reranking is a Phase-8 slot — until then `hybrid+rerank == hybrid`.

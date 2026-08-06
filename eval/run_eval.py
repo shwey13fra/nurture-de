@@ -23,6 +23,7 @@ a different judge avoids grading-its-own-homework bias. Output is a Markdown tab
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import os
 import sys
@@ -172,7 +173,8 @@ def evaluate(limit: int | None) -> None:
 
     # per-config accumulators
     agg = {c: {"recall": [], "beh_pass": 0, "beh_total": 0, "hard_pass": 0, "hard_total": 0,
-               "cit_checked": 0, "cit_supported": 0, "gen_cost": 0.0, "judge_cost": 0.0}
+               "cit_checked": 0, "cit_supported": 0, "gen_cost": 0.0, "judge_cost": 0.0,
+               "prov": collections.defaultdict(lambda: {"recall": [], "beh_pass": 0, "beh_total": 0})}
            for c in CONFIGS}
 
     for case in cases:
@@ -207,6 +209,11 @@ def evaluate(limit: int | None) -> None:
             if case.get("expected_difficulty") == "hard":
                 agg[config]["hard_total"] += 1
                 agg[config]["hard_pass"] += int(ok)
+            prov = agg[config]["prov"][case.get("provenance", "unspecified")]
+            prov["beh_total"] += 1
+            prov["beh_pass"] += int(ok)
+            if r is not None:
+                prov["recall"].append(r)
 
             # citation validity only where an answer is expected
             if exp_b in ANSWERING:
@@ -240,6 +247,15 @@ def _print_table(agg: dict, n_cases: int) -> None:
     for c in CONFIGS:
         a = agg[c]
         print(f"- {c}: {pct(a['hard_pass'], a['hard_total'])} of {a['hard_total']} hard cases")
+
+    print("\n**by provenance** (corpus-derived = retrieval quality; lived-experience = safety behaviour):")
+    for c in CONFIGS:
+        for prov in ("corpus-derived", "lived-experience"):
+            p = agg[c]["prov"].get(prov)
+            if not p or not p["beh_total"]:
+                continue
+            print(f"- {c} / {prov}: behaviour {pct(p['beh_pass'], p['beh_total'])} "
+                  f"({p['beh_total']} cases), recall@{K_RECALL} {mean(p['recall'])}")
 
 
 if __name__ == "__main__":
