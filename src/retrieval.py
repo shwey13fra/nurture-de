@@ -91,8 +91,11 @@ class RetrievalTrace:
     sparse: list[dict] = field(default_factory=list)    # {chunk_id, bm25, rank}
     fused: list[dict] = field(default_factory=list)     # {chunk_id, rrf, dense_rank, sparse_rank}
     filter_exclusions: list[dict] = field(default_factory=list)  # {chunk_id, reason}
+    both: list[str] = field(default_factory=list)       # chunk_ids retrieved by BOTH indexes
     rerank: list[dict] | None = None                    # populated when a reranker lands (Phase 5+)
     final_context: list[str] = field(default_factory=list)       # chunk_ids returned, in order
+    context_tokens: int = 0                             # cl100k tokens of the assembled context
+    underfilled: dict | None = None                     # set when the filtered pool is < k
     timings_ms: dict = field(default_factory=dict)
 
 
@@ -240,26 +243,75 @@ class SparseIndex:
         return out
 
 
+# --- reciprocal rank fusion --------------------------------------------------
+def rrf_fuse(dense_ids: Sequence[str], sparse_ids: Sequence[str],
+             k: int = RRF_K) -> list[tuple[str, float]]:
+    """Reciprocal Rank Fusion. Each argument is chunk_ids in rank order (best first).
+    A chunk's fused score is the sum, over the lists it appears in, of 1/(k + rank).
+
+    Why k=60 (standard): the constant DAMPENS the top of each list. A rank-0 hit
+    contributes 1/(60+0)=0.0167, not 1.0, and rank-1 contributes 0.0164 — nearly the
+    same. So one index's single #1 outlier can't dominate the fusion; a chunk that both
+    indexes rank *reasonably* (two 1/(k+rank) terms) outscores one that either index
+    ranks #1 alone. Larger k => flatter weighting (rank matters less); smaller k =>
+    the very top rank dominates. Rank-based, so BM25's unbounded scores and cosine's
+    [-1,1] are never normalised against each other."""
+    scores: dict[str, float] = {}
+    for ranked in (dense_ids, sparse_ids):
+        for rank, cid in enumerate(ranked):
+            scores[cid] = scores.get(cid, 0.0) + 1.0 / (k + rank)
+    return sorted(scores.items(), key=lambda x: x[1], reverse=True)
+
+
 # --- filters ----------------------------------------------------------------
+# `any` is the no-constraint value for these fields (Phase-3 taxonomy): a chunk tagged
+# user_type=any / insurance_type=any applies REGARDLESS of the caller's persona, so it
+# must survive a filter for any *specific* value. Omitting this silently halves recall
+# (user_type=any is 59% of the corpus; insurance_type=any is 95%). topic/language have
+# no `any` bucket and stay exact-match.
+ANY_PASSTHROUGH_FIELDS = {"user_type", "insurance_type"}
+
+
 def _passes(meta: dict, filters: dict | None) -> tuple[bool, str]:
-    """Exact-match metadata filter. Returns (passed, reason_if_excluded)."""
+    """Metadata pre-filter. Returns (passed, reason_if_excluded). For the
+    any-passthrough fields, a chunk passes if it matches the requested value OR is
+    tagged `any`."""
     if not filters:
         return True, ""
     for key, want in filters.items():
         got = meta.get(key)
-        if isinstance(want, (list, tuple, set)):
-            if got not in want:
-                return False, f"{key}={got!r} not in {list(want)!r}"
-        elif got != want:
-            return False, f"{key}={got!r} != {want!r}"
+        wants = set(want) if isinstance(want, (list, tuple, set)) else {want}
+        if key in ANY_PASSTHROUGH_FIELDS:
+            wants = wants | {"any"}     # no-constraint chunks are always eligible
+        if got not in wants:
+            return False, f"{key}={got!r} not in {sorted(wants)!r}"
     return True, ""
+
+
+# --- assembled-context token count (for the trace / Phase-12 visualiser) -----
+_cl100k = None
+
+
+def _context_tokens(texts: Sequence[str]) -> int:
+    """cl100k token count of the assembled context (chunk texts joined). Lazily imports
+    the vendored encoder so importing this module stays cheap. cl100k (not E5) is the
+    right unit here — this counts the budget of what gets handed to the answering LLM,
+    not what the embedder saw."""
+    global _cl100k
+    if _cl100k is None:
+        import os
+        import sys as _sys
+        _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from vendor import cl100k as _c
+        _cl100k = _c
+    return _cl100k.count("\n\n".join(texts))
 
 
 # --- the interface ----------------------------------------------------------
 class Retriever:
     """The one retrieval interface. Construct once, reuse (holds the loaded model)."""
 
-    POOL = 50  # candidates pulled from each index before filtering + fusion
+    POOL = 20  # candidates pulled from EACH index before filtering + fusion (spec: top-20)
 
     def __init__(self, embedder: Embedder | None = None,
                  store: ChromaStore | None = None,
@@ -273,11 +325,14 @@ class Retriever:
             self.sparse = SparseIndex.load()
         return self.sparse
 
-    def search(self, query: str, k: int = 5, filters: dict | None = None,
+    def search(self, query: str, k: int = 10, filters: dict | None = None,
                mode: str = "hybrid", trace: bool = False):
         """mode: 'hybrid' (RRF of dense+sparse) | 'dense' | 'sparse'.
 
-        Returns list[RetrievedChunk]; if trace=True, returns (list, RetrievalTrace).
+        Metadata filtering is a PRE-filter: candidates are dropped before fusion, so an
+        aggressive filter can leave the fused pool below k (unlike a post-filter, which
+        can't). That case is recorded on the trace (`underfilled`) rather than silently
+        returning short. Returns list[RetrievedChunk]; if trace=True, (list, trace).
         """
         tr = RetrievalTrace(query=query, mode=mode, filters=filters) if trace else None
         t0 = time.perf_counter()
@@ -285,19 +340,21 @@ class Retriever:
         dense_hits: list[dict] = []
         if mode in ("hybrid", "dense"):
             ts = time.perf_counter()
-            qv = self.embedder.embed_query(query)
+            qv = self.embedder.embed_query(query)          # "query: " prefix (asymmetric E5)
             dense_hits = self.store.query(qv, self.POOL)
             if tr:
-                tr.timings_ms["dense"] = (time.perf_counter() - ts) * 1000
+                tr.timings_ms["dense_ms"] = (time.perf_counter() - ts) * 1000
 
         sparse_hits: list[dict] = []
         if mode in ("hybrid", "sparse"):
             ts = time.perf_counter()
             sparse_hits = self._sparse_index().query(query, self.POOL)
             if tr:
-                tr.timings_ms["sparse"] = (time.perf_counter() - ts) * 1000
+                tr.timings_ms["sparse_ms"] = (time.perf_counter() - ts) * 1000
 
-        # client-side filtering (records exclusions for the trace)
+        # --- pre-filter (records exclusions + reasons for the trace) ---
+        tf = time.perf_counter()
+
         def keep(hits):
             kept = []
             for h in hits:
@@ -308,40 +365,47 @@ class Retriever:
                     tr.filter_exclusions.append({"chunk_id": h["chunk_id"], "reason": why})
             return kept
 
-        dense_hits = keep(dense_hits)
-        sparse_hits = keep(sparse_hits)
+        if filters:
+            dense_hits, sparse_hits = keep(dense_hits), keep(sparse_hits)
+        if tr:
+            tr.timings_ms["filter_ms"] = (time.perf_counter() - tf) * 1000
 
-        dense_rank = {h["chunk_id"]: i for i, h in enumerate(dense_hits)}
-        sparse_rank = {h["chunk_id"]: i for i, h in enumerate(sparse_hits)}
+        dense_ids = [h["chunk_id"] for h in dense_hits]
+        sparse_ids = [h["chunk_id"] for h in sparse_hits]
+        dense_rank = {cid: i for i, cid in enumerate(dense_ids)}
+        sparse_rank = {cid: i for i, cid in enumerate(sparse_ids)}
         meta_by_id = {h["chunk_id"]: h for h in (*dense_hits, *sparse_hits)}
+        both = [cid for cid in dense_ids if cid in sparse_rank]
 
         if tr:
             tr.dense = [{"chunk_id": h["chunk_id"], "similarity": round(h["similarity"], 4),
                          "rank": i} for i, h in enumerate(dense_hits)]
             tr.sparse = [{"chunk_id": h["chunk_id"], "bm25": round(h["bm25"], 4),
                           "rank": i} for i, h in enumerate(sparse_hits)]
+            tr.both = both
 
-        # fuse
+        # --- fuse ---
+        tfu = time.perf_counter()
         if mode == "dense":
             ranked = [(h["chunk_id"], h["similarity"]) for h in dense_hits]
         elif mode == "sparse":
             ranked = [(h["chunk_id"], h["bm25"]) for h in sparse_hits]
         else:
-            ids = set(dense_rank) | set(sparse_rank)
-            fused = []
-            for cid in ids:
-                rrf = 0.0
-                if cid in dense_rank:
-                    rrf += 1.0 / (RRF_K + dense_rank[cid])
-                if cid in sparse_rank:
-                    rrf += 1.0 / (RRF_K + sparse_rank[cid])
-                fused.append((cid, rrf))
-            fused.sort(key=lambda x: x[1], reverse=True)
-            ranked = fused
+            ranked = rrf_fuse(dense_ids, sparse_ids)
             if tr:
                 tr.fused = [{"chunk_id": cid, "rrf": round(s, 6),
                              "dense_rank": dense_rank.get(cid),
-                             "sparse_rank": sparse_rank.get(cid)} for cid, s in fused[:k]]
+                             "sparse_rank": sparse_rank.get(cid)} for cid, s in ranked[:k]]
+        if tr:
+            tr.timings_ms["fusion_ms"] = (time.perf_counter() - tfu) * 1000
+
+        # pre-filtering can shrink the pool below k — surface it, don't hide it
+        if tr and len(ranked) < k:
+            tr.underfilled = {
+                "requested": k, "available": len(ranked),
+                "reason": ("pre-filtering left fewer than k candidates" if filters
+                           else "index pool yielded fewer than k candidates"),
+            }
 
         results = []
         for cid, score in ranked[:k]:
@@ -350,6 +414,21 @@ class Retriever:
 
         if tr:
             tr.final_context = [r.chunk_id for r in results]
-            tr.timings_ms["total"] = (time.perf_counter() - t0) * 1000
+            tr.context_tokens = _context_tokens([r.text for r in results])
+            tr.timings_ms["total_ms"] = (time.perf_counter() - t0) * 1000
             return results, tr
         return results
+
+
+# --- module-level entry point -----------------------------------------------
+_DEFAULT_RETRIEVER: Retriever | None = None
+
+
+def search(query: str, k: int = 10, filters: dict | None = None, trace: bool = False):
+    """The single retrieval entry point every caller goes through. Hybrid dense+sparse
+    with RRF and optional metadata pre-filtering. Reuses one Retriever (which holds the
+    loaded E5 model + both indexes) so repeated calls don't reload 1 GB of weights."""
+    global _DEFAULT_RETRIEVER
+    if _DEFAULT_RETRIEVER is None:
+        _DEFAULT_RETRIEVER = Retriever()
+    return _DEFAULT_RETRIEVER.search(query, k=k, filters=filters, mode="hybrid", trace=trace)

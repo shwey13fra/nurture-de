@@ -17,6 +17,7 @@ place to understand *why the corpus looks the way it does*.
 | 3  | Metadata annotation (`annotate.py`: topic/subtopic/user_type/insurance) | **done** |
 | 3b | Environment migration (3.11 venv, CPU torch, requirements.txt)        | **done** |
 | 4  | Embedding & vector index (E5 + Chroma + BM25)                         | **done** — validated (3-test gate green; E5 512-cap enforced → P7) |
+| 5  | Retrieval (`search()`: dense+sparse+RRF, metadata pre-filter, trace)  | **done** — 6-query validation + filtering proof (→ P8) |
 
 ---
 
@@ -149,6 +150,78 @@ BM25 over the *displayed* `text` carries exact rare-token matches (whole compoun
 incomparable score scales are never normalised against each other). Smoke retrieval
 (Test 3) confirmed the split works: DE queries surface DE sources, EN→EN, and
 "Wie finde ich eine Hebamme?" returns the midwife-support pages.
+
+## Phase 5 — Retrieval
+
+**Output:** one entry point — `search(query, k=10, filters=None, trace=False)` in
+`src/retrieval.py` — every caller goes through it; embedder and vector store stay
+swappable behind it. Hybrid by construction: dense (E5 `query: ` prefix, top-20 from
+Chroma) + sparse (BM25 over `text`, top-20) fused with RRF, optional metadata
+pre-filter, and a full `RetrievalTrace` when `trace=True` (dense/sparse ranks+scores,
+chunks-in-both, per-chunk RRF detail, filter exclusions+reasons, assembled-context
+cl100k token count, underfill flag, per-stage timings). The trace is built as data is
+produced so the Phase-12 visualiser needs no retrofit.
+
+### RRF and why k=60
+
+`rrf_fuse` is six lines, written not imported, so the constant is explainable: a chunk's
+fused score is the sum over the lists it appears in of `1/(k + rank)`. **k=60 dampens the
+top of each list** — a rank-0 hit contributes `1/60 = 0.0167`, rank-1 `1/61 = 0.0164`,
+nearly the same — so one index's single #1 outlier cannot dominate; a chunk both indexes
+rank *reasonably* (two `1/(k+rank)` terms) outscores one that either index ranks #1
+alone. Smaller k → the very top rank dominates; larger k → flatter. Rank-based, so BM25's
+unbounded scores and cosine's [-1,1] are never normalised against each other.
+
+### Pre-filtering tradeoff + the `any`-passthrough (the recall trap)
+
+Filtering is a **pre-filter** (candidates dropped before fusion), so — unlike a
+post-filter — an aggressive filter can leave the fused pool below k. Handled explicitly:
+`trace.underfilled` records `{requested, available, reason}` rather than silently
+returning short (demonstrated: `topic=child-benefits`, a 1-chunk topic → returns 1,
+underfilled reported, 38 exclusions logged). **The load-bearing rule:** `user_type=any`
+and `insurance_type=any` are the *no-constraint* values, so a chunk tagged `any` must
+survive a filter for any *specific* value — `_passes` unions `{any}` into the requested
+set for those two fields. Omitting this silently halves recall: `user_type=any` is 59% of
+the corpus, `insurance_type=any` 95%. `topic`/`language` have no `any` bucket → exact
+match.
+
+### Validation — six queries, dense vs sparse vs fused (`tests/phase5_retrieval.py`)
+
+The honest headline is a **falsified expectation** (→ P8): the a-priori hybrid argument
+was "on a bare legal term (`Mutterschutzfrist`, query 3) BM25 will *beat* dense, because
+dense blurs rare terms." It did **not** play out that way. E5 is multilingual and
+compound-aware, so dense gave the bare compound tight, confident scores (0.90/0.89/0.89)
+and put the duration chunk ("Wie lange besteht der Mutterschutz vor der Geburt") at rank
+3; BM25 ranked that exact chunk #0 but with a *weak* absolute signal (~4.3, because the
+compound is one rare un-split token, not many matching terms). So BM25 had a mild
+precision edge on the exact term, not a decisive win — a strong multilingual embedder
+largely closes the classic "dense fails on rare terms" gap.
+
+**Where hybrid demonstrably earns its place on this corpus** is the opposite mechanism —
+BM25 *rescuing a literally-matching chunk that dense buries*:
+- **Query 4** "Wie beantrage ich Elterngeld?": the Elterngeld overview hub ("Was Sie zum
+  Elterngeld wissen müssen") sits at **dense rank 11** (outside a dense-only top-10) but
+  **BM25 rank 1**; fusion promotes it to **#3**. That chunk only makes the answer because
+  of BM25.
+- **Query 1** "Wann beginnt die Mutterschutzfrist?": the twins-specific regulation
+  ("Welche Regelungen gelten, wenn ich Zwillinge…", which literally contains
+  Mutterschutzfrist) is **dense 12 / BM25 0** — again surfaced only by the sparse side.
+
+Cross-lingual still holds (query 2, EN→German-derived TK content top-5; the corpus's
+prenatal EN pages rank correctly). Steady-state latency: dense ~0.2–0.5 s, sparse <1 ms,
+fusion/filter ~0 ms; the first query of a process shows ~17 s because the E5 model loads
+lazily on first embed — a one-time warmup, not per-query cost.
+
+### Filtering proof — query 5, with vs without `user_type=self-employed`
+
+Without a filter, "I am self-employed, do I get maternity pay?" returns **all 10
+employee-tagged** `tk_maternity_pay` chunks and **zero self-employed-specific** content —
+exactly the silent recall failure the passthrough rule exists to prevent. With
+`filters={"user_type": "self-employed"}`: 8 employee chunks drop, the **3 dedicated
+`fam_mutterschaftsleistungen` "…wenn ich selbständig bin" chunks surface**, and `any`
+chunks are correctly retained alongside them (the filtered set still includes
+`user_type=any` prep/benefits pages). Filtering visibly changes the set — and the
+passthrough keeps the everyone-content while adding the persona-specific content.
 
 ---
 
@@ -312,3 +385,30 @@ pair left cross-lingual alignment intact). Each chunk now stores `e5_token_count
 downstream, measure against the actual tokenizer that enforces it — not a proxy that
 merely correlates. (The same build also surfaced PM-5: the cl100k proxy itself lived
 outside the repo, so the tracked corpus wasn't reproducible; both were fixed together.)
+
+### P8 — Hybrid helps, but not for the reason we argued (BM25 vs dense on a bare legal term)
+
+The a-priori case for hybrid retrieval was: a bare German legal term like
+`Mutterschutzfrist` (validation query 3) would **defeat dense** — a rare compound blurs
+in the embedding space — and **BM25's exact-token match would beat it**, justifying the
+sparse index. The validation was run specifically to *see* this. It didn't happen. E5 is
+multilingual and compound-aware: dense returned the bare compound with tight, confident
+cosines (0.90/0.89/0.89) and ranked the exact duration chunk at #3, while BM25's absolute
+signal on the single un-split token was *weak* (~4.3 vs ~30 on a multi-term query). BM25
+had only a mild precision edge (the exact chunk at #0 vs dense's #3), not the decisive win
+predicted.
+
+**Why keep BM25 anyway — the real, measured justification.** Hybrid earns its place
+through the *opposite* mechanism: BM25 rescues a literally-matching chunk that dense
+buries below the cut. Query 4 (Elterngeld) — the overview hub is **dense 11 / BM25 1**,
+fusion lifts it to #3; query 1 — the twins-specific Mutterschutzfrist regulation is
+**dense 12 / BM25 0**. Neither reaches a dense-only top-10 on its own. So the sparse index
+is justified by evidence, just not the evidence we expected to cite.
+
+**Reusable lesson:** run the experiment that could *falsify* your architectural argument,
+not the one that confirms it, and let the result rewrite the claim. A strong multilingual
+embedder narrows the classic "dense fails on rare terms" gap; the sparse index's value on
+this corpus is *rank rescue of exact/edge matches*, and that is the claim to make out
+loud — because it's the one the data supports. (Same discipline as P7's falsified
+tokenizer prediction: a wrong prediction caught by measurement beats an untested right
+one.)

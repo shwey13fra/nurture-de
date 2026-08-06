@@ -151,3 +151,29 @@
   linger under their old ids. Rebuilds start from a clean `chroma_db/` (gitignored,
   rebuildable). `bm25.pkl` is fully overwritten by `SparseIndex.build`, so it needs no
   special handling.
+
+## 2026-08-06 — Phase 5 (retrieval)
+
+- **`any` is a filter-passthrough, not a filter value.** `user_type=any` /
+  `insurance_type=any` mean "no persona/insurance constraint applies," so `_passes`
+  unions `{any}` into the requested set for those two fields — a chunk tagged `any`
+  survives a filter for any specific value. Exact-match here would silently halve recall
+  (`any` is 59% / 95% of the corpus). `topic`/`language` have no `any` bucket → exact.
+
+- **Filtering is a pre-filter, and underfill is surfaced, not hidden.** Candidates are
+  dropped before RRF fusion (records exclusion reasons for the trace), which means an
+  aggressive filter can leave the pool below k — unlike a post-filter. `trace.underfilled`
+  reports `{requested, available, reason}` instead of returning short silently. Cost of
+  pre- over post-filter: recall risk when POOL (20/index) is small vs. an aggressive
+  filter; accepted for now (corpus is 225 chunks) and visible in the trace. Server-side
+  Chroma `where` is the swap if pre-filter recall ever bites — but it would hide the
+  exclusion reasons the visualiser wants.
+
+- **RRF written, not imported (k=60).** Six lines, so the damping constant is explainable
+  and ownable; k=60 flattens the top so no single index's #1 dominates. Rank-based fusion
+  avoids normalising BM25's unbounded scores against cosine.
+
+- **Sparse index justified by rank-rescue, not by beating dense on legal terms.** The
+  validation falsified the a-priori "BM25 beats dense on a bare compound" argument (E5 is
+  compound-aware); BM25's measured value is surfacing exact/edge chunks dense buries
+  (query 4: dense 11 → fused 3). Full evidence + lesson in `BUILD_JOURNAL.md` P8.
