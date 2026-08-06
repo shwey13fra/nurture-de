@@ -19,6 +19,7 @@ place to understand *why the corpus looks the way it does*.
 | 4  | Embedding & vector index (E5 + Chroma + BM25)                         | **done** — validated (3-test gate green; E5 512-cap enforced → P7) |
 | 5  | Retrieval (`search()`: dense+sparse+RRF, metadata pre-filter, trace)  | **done** — 6-query validation + filtering proof (→ P8) |
 | 6  | Generation (`generate.py`: grounded, cited answer or honest refusal)  | **done** — 6-case + injection validation, all pass |
+| 7  | Golden set + eval harness (`eval/`)                                   | **scaffolding built** — coverage map delivered; awaiting human-written questions |
 
 ---
 
