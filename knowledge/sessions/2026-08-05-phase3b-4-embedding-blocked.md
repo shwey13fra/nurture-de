@@ -1,5 +1,23 @@
 # Session Journal — 2026-08-05 (evening): Phase 3b DONE, Phase 4 BLOCKED on commit-OOM
 
+## 🔖 2026-08-06 addendum — code now COMMITTED, rebooting to clear commit charge
+
+Decision (2026-08-06): commit the finished-but-unrun Phase 4 code **before** rebooting,
+so a reader can tell *unverified* from *unfinished*, then reboot to clear the 44 GB
+unattributable commit charge (the environmental wall, not a code or model problem).
+
+- **Phase 4 code committed at `0442c86`** — "Phase 4: embedding + index (untested —
+  blocked by system commit exhaustion)". Syntax-valid (byte-compiled); has **not** run.
+  This supersedes the "WRITTEN but NOT committed" section below.
+- **Resume state after reboot:** check free commit FIRST (command in step 0 below). If
+  headroom is back (> ~3 GB), run steps 1–2. If it is STILL choked immediately after a
+  clean reboot, STOP and report — that turns an accumulated leak into a *reproducible*
+  problem worth investigating (RAMMap), which is a different diagnosis.
+- **Unchanged decisions — do NOT relitigate:** e5-large is the intended model; fp16 +
+  batch 8 stand; the OOM was environmental (commit exhaustion), not model size (a 67 MB
+  *download* buffer failed *before* the model loaded → e5-base/small fail identically).
+- Prior-work baseline: last commit before Phase 4 code was `0114b2d`.
+
 ## ⏭️ RESUME TOMORROW — read this first
 
 **One decision is open, and it is NOT about the model or the code.** Both choices
@@ -38,8 +56,9 @@ cross-lingual numbers, E5-vs-cl100k token comparison) and **commit Phase 4**.
   rank-bm25 0.2.2. (The venv had been built in an un-journaled prior session; the
   durable artifacts — requirements.txt, README, journal — were the real 3b deliverable.)
 
-## 📝 WRITTEN but NOT committed (on disk — survives reboot; unvalidated by design)
-Phase 4 commit is intentionally deferred until the validation gate passes.
+## 📝 Phase 4 code — COMMITTED `0442c86`, still UNVALIDATED (see 08-06 addendum above)
+Originally left uncommitted pending the gate; on 08-06 committed as *unverified* (honest
+message) rather than deferred, so the reboot can't lose it. The gate is still outstanding.
 - `src/retrieval.py` — the single `search(query, k, filters) -> list[RetrievedChunk]`
   interface. Swappable **Embedder** (E5) + **VectorStore** (Chroma) + **SparseIndex**
   (BM25) behind it, for the prod swap (hosted endpoint + Supabase pgvector). RRF hybrid

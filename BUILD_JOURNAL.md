@@ -16,7 +16,7 @@ place to understand *why the corpus looks the way it does*.
 | 2  | Heading-aware chunking (`chunk.py` → `data/chunks.jsonl`)             | done |
 | 3  | Metadata annotation (`annotate.py`: topic/subtopic/user_type/insurance) | **done** |
 | 3b | Environment migration (3.11 venv, CPU torch, requirements.txt)        | **done** |
-| 4  | Embedding & vector index (E5 + Chroma + BM25)                         | next |
+| 4  | Embedding & vector index (E5 + Chroma + BM25)                         | **code committed, UNRUN** (commit-OOM → P6) |
 
 ---
 
@@ -201,3 +201,28 @@ failure rate ≤4.5%, under the 10–15% bar.
 Re-extraction: **0 leaked prefixes** remain across all TK docs. Especially worth
 fixing pre-embedding because the leak sat at the *head* of `embed_text`, where it
 distorts the vector most.
+
+### P6 — Phase 4 OOM was the environment, not the model (commit-charge exhaustion)
+
+`src/index.py` OOM'd **twice** building the e5-large index — but the failure was
+`memory allocation of 67 MB failed` during the model **download** (the Rust `hf-xet`
+buffer), *before the model was ever loaded*. That tell is the whole finding: a 67 MB
+allocation cannot fail for lack of room for a 2.2 GB model, so **model size was never
+the wall**. Measurement located the real one: physical RAM was fine (1.3 GB free), but
+Windows **commit charge sat at 98.7%** (limit 63.7 GB = 15.7 RAM + 48 pagefile; only
+0.82 GB headroom), with **44 GB of committed memory unattributable to any process or
+kernel pool** — the signature of leaked commit from badly-exited processes, which a
+reboot clears.
+
+**Why this belongs in the register and not just the model notes:** the reflexive fix
+was "e5-large is big, drop to e5-base." That would have *failed identically* (the
+download buffer fails the same at any model size) **and** poisoned interpretation — a
+subsequently weak cross-lingual Test 1 would have been blamed on 768-dim being too weak
+for the EN/DE design, when the true cause was a full commit charge. Downgrading before
+diagnosing degrades cross-lingual alignment for no reason and then mis-attributes the
+result to the design. **Response:** keep e5-large; reduce genuine footprint anyway
+(fp16 load, batch 8) as help *after* understanding the wall, not as a guess; free
+commit by rebooting; re-verify commit headroom *before* loading anything post-reboot.
+The lesson as a reusable rule is PM-4 (diagnose the resource wall before blaming the
+design). Phase 4 code is committed **unrun** at `0442c86`; the three-test validation
+gate is still outstanding, to run once the box has headroom (`knowledge/sessions/2026-08-05-phase3b-4-embedding-blocked.md`).
