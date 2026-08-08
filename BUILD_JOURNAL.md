@@ -367,6 +367,33 @@ Mutterschutzlohn↔Mutterschaftsgeld disambiguation, flagged as the first case t
 results return). The discipline: verify the corpus supports a case *before* it enters the
 golden set, so the eval never blames the system for a mis-specified question.
 
+### Decision — Policy A: cross-lingual answering is the feature (a product decision)
+
+The Phase-7 golden set forced a product decision, and it's the clearest case in this build of
+the **architecture and the product thesis pointing the same way**. All 40 lived-experience
+questions are in English; the answerable employment / Mutterschutz / midwife topics exist
+**only in German sources**. The eval's original `answer_language_mismatch` rule would have had
+the system *refuse* ~6 of its highest-value questions — "no English source."
+
+**Reversed to Policy A: answer an English question from the German source, in English,
+surfacing the German term and disclosing the source is German-only.** Rationale: the product
+thesis is that this information *exists but is inaccessible* — fragmented, in German, requiring
+terms the user doesn't know. A system that finds the right German passage and refuses to use
+it because the question was in English has **reproduced the exact problem it was built to
+solve, while appearing to work.** It is also what the architecture is *for*: a multilingual
+embedder chosen on Day 1, EN/DE pairs collected deliberately, cross-lingual alignment verified
+at **0.86 in Phase 4** — Policy B would make all of that decorative.
+
+**Rule correction (recorded):** the earlier rule conflated two different gaps — *content
+exists in another language* (→ **answer**, in the user's language, surface the term) vs
+*content doesn't exist at all* (→ **out_of_corpus**). `answer_language_mismatch` only existed
+because those were merged; under Policy A it dissolves (no cases survive) and was removed from
+schema + harness. Added instead: **`answer_partial`** — answer what the corpus covers and name
+what it doesn't (system-prompt rule 5), a distinct desirable outcome scored on its own (e.g.
+"which tests does statutory insurance cover" — the corpus lists the standard Vorsorge but has
+no coverage breakdown). System-prompt rule 8 now also requires disclosing when an answer is
+translated from a German-only source.
+
 ### Known limitation — freshness disclosure is untestable until a re-fetch
 
 Every source's `last_verified` is **2026-08-03**: the whole corpus was fetched on a single

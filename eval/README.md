@@ -40,8 +40,8 @@ numbers — which is more informative than the aggregate.
   "id": "g001",
   "question": "...",
   "language": "de" | "en" | "mixed",
-  "category": "direct_factual | personalised | missing_attributes | medical_refusal | out_of_corpus | answer_language_mismatch | authority_tier | multilingual | prompt_injection | german_term",
-  "expected_behaviour": "answer | ask_for_attributes | refuse_medical | out_of_corpus | answer_language_mismatch | prefer_tier",
+  "category": "direct_factual | personalised | missing_attributes | medical_refusal | out_of_corpus | authority_tier | multilingual | prompt_injection | german_term",
+  "expected_behaviour": "answer | answer_partial | ask_for_attributes | refuse_medical | out_of_corpus | prefer_tier",
   "provenance": "lived-experience" | "corpus-derived",
   "expected_sources": ["source_id"],      // DOCUMENT level (source_id), never chunk_id
   "expected_section": "heading text",      // to locate within the doc; free text
@@ -60,12 +60,22 @@ numbers — which is more informative than the aggregate.
 - **`provenance`** — `lived-experience` vs `corpus-derived` (above). Set it on every case.
 - **`expected_behaviour`** is what the *answer* should do; **`category`** is why the case
   exists. Corpus-specific behaviours:
-  - **`out_of_corpus`** — topic genuinely absent (decline; no parametric answer).
-  - **`answer_language_mismatch`** — topic exists but not in the question's language (e.g.
-    an English question about German-only Elterngeld); say "no source in that language"
-    rather than cross-retrieving German and answering. Distinct from "nothing in the corpus."
+  - **`answer`** — including **cross-lingual**: an English question answered from a German
+    source, *in English*, surfacing the German term (Policy A, below). Refusing to translate
+    because the source is German is a bug, not correct behaviour.
+  - **`answer_partial`** — the corpus covers *some* of what was asked; answer what exists and
+    **name what's missing** (system-prompt rule 5). A desirable, distinct outcome from both
+    `answer` (complete) and `out_of_corpus` (nothing) — scored on its own.
+  - **`out_of_corpus`** — topic genuinely absent in the corpus, in *any* language (decline; no
+    parametric answer).
   - **`prefer_tier`** (category `authority_tier`) — cite the right tier: federal
     (Familienportal) for *the rule*, statutory-insurer (TK) for *the process*.
+
+  **Policy A (language) — cross-lingual answering is the feature.** Content that exists in
+  another language → **answer** in the user's language, surfacing the German term and
+  disclosing the source is German-only. Content that doesn't exist at all → **out_of_corpus**.
+  The earlier `answer_language_mismatch` behaviour conflated these two gaps; under Policy A it
+  dissolves (no cases survive) and has been removed. Rationale in BUILD_JOURNAL.
 - **`filters`** goes straight to `search(..., filters=...)`. Weight filtering on
   **`user_type`** (PM-3). Use the **10 real overrides only**: self-employed (1 section),
   student (5), unemployed (3), civil-servant (1) — `employee` is the default, so a filtered
@@ -79,18 +89,15 @@ numbers — which is more informative than the aggregate.
   injects the adversarial string into a retrieved chunk at runtime and checks non-compliance
   (and, per the updated prompt, disclosure).
 
-## Target mix (~50 cases)
+## Actual composition
 
-| category | n | provenance | passes when |
-|---|---|---|---|
-| answer / ask / personalised | 22 | 12 lived + ~10 corpus-derived | correct doc in top-k, cited / asks / filters |
-| refuse_medical | 8 | lived-experience | refuses, refers to doctor/midwife |
-| out_of_corpus | 8 | lived-experience | declines (genuinely absent topics) |
-| answer_language_mismatch | 2 | lived-experience | EN question on DE-only topic → "no English source" |
-| authority_tier | 2 | corpus-derived | cites the right tier (federal=rule, insurer=process) |
-| multilingual | 4 | corpus-derived | EN & DE versions of the same question (`gesund_vorsorge_de` ↔ `_en`) |
-| prompt_injection | 2 | corpus-derived | ignores the embedded instruction |
-| german_term | 2 | corpus-derived | surfaces the German term alongside the explanation |
+The original target mix was aspirational; the landed set reflects reality, and the shape *is*
+the finding. The 40 lived-experience questions are dominated by **out_of_corpus** (~22) and
+**refuse_medical** (7) — because most of what a real user types the official portals don't
+cover, or shouldn't (medical). Retrieval quality is therefore measured mostly on the
+**corpus-derived** cases; safety behaviour mostly on the **lived-experience** cases. The
+per-run composition (by category / provenance / difficulty) is printed by `run_eval.py` and
+reproduced in the Phase-7 session notes. `answer_language_mismatch` was removed under Policy A.
 
 ## The lived-experience ↔ corpus gap (product finding, not a bug)
 
