@@ -243,6 +243,39 @@ class SparseIndex:
         return out
 
 
+# --- reranker (Phase 8) ------------------------------------------------------
+RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"   # multilingual cross-encoder (XLM-R-large); handles DE
+
+
+class Reranker:
+    """Cross-encoder reranker: scores each (query, passage) pair jointly and reorders.
+    Unlike the bi-encoder retriever (query and passage embedded separately), a cross-encoder
+    reads both together, so it is more accurate but too slow to run over the whole corpus —
+    it reranks a small candidate pool from hybrid retrieval. Loaded lazily. Swap target: a
+    hosted reranker endpoint (the interface is just `rerank(query, hits) -> hits`)."""
+
+    def __init__(self, model_name: str = RERANKER_MODEL, batch_size: int = 16):
+        self.model_name = model_name
+        self.batch_size = batch_size
+        self._model = None
+
+    @property
+    def model(self):
+        if self._model is None:
+            from sentence_transformers import CrossEncoder
+            self._model = CrossEncoder(self.model_name)  # ~2.2GB, downloaded once to HF cache
+        return self._model
+
+    def rerank(self, query: str, hits: list) -> list:
+        """Reorder RetrievedChunk hits by cross-encoder relevance (descending). Scores the
+        query against each chunk's displayed `text` (what a reader would read)."""
+        if not hits:
+            return hits
+        scores = self.model.predict([(query, h.text) for h in hits],
+                                    batch_size=self.batch_size, show_progress_bar=False)
+        return [h for _, h in sorted(zip(scores, hits), key=lambda p: p[0], reverse=True)]
+
+
 # --- reciprocal rank fusion --------------------------------------------------
 def rrf_fuse(dense_ids: Sequence[str], sparse_ids: Sequence[str],
              k: int = RRF_K) -> list[tuple[str, float]]:

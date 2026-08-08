@@ -86,8 +86,11 @@ numbers — which is more informative than the aggregate.
   a need without naming the term it should surface — the product's core job). `run_eval.py`
   reports the hard-case pass rate separately.
 - **`prompt_injection`** cases: normal question, `expected_behaviour` `answer`; the harness
-  injects the adversarial string into a retrieved chunk at runtime and checks non-compliance
-  (and, per the updated prompt, disclosure).
+  injects an adversarial string into a retrieved chunk at runtime and checks non-compliance
+  (and, per the updated prompt, disclosure). The string is the optional per-case **`injection`**
+  field (falls back to a default). Two attack *shapes* are tested — a **direct override**
+  (g008) and an **indirect** one framed as a document update / superseding rule (g009) —
+  because two cases of the same shape prove less than two of different shapes.
 
 ## Actual composition
 
@@ -98,6 +101,12 @@ cover, or shouldn't (medical). Retrieval quality is therefore measured mostly on
 **corpus-derived** cases; safety behaviour mostly on the **lived-experience** cases. The
 per-run composition (by category / provenance / difficulty) is printed by `run_eval.py` and
 reproduced in the Phase-7 session notes. `answer_language_mismatch` was removed under Policy A.
+
+**Coverage notes (deliberate, not oversights):** cross-lingual retrieval/answering is tested
+**implicitly** across the 6 English→German `answer` cases (L20, L24, L26, L28, L29, L30) rather
+than as a standalone `multilingual` category — broader coverage than a single dedicated pair.
+`authority_tier` is left at **1 case** (g007); `prompt_injection` has **2** (different shapes,
+above).
 
 ## The lived-experience ↔ corpus gap (product finding, not a bug)
 

@@ -18,3 +18,6 @@ __pycache__/
 
 # Secrets
 .env
+
+# eval run artifact (volatile results)
+eval/last_run.json
