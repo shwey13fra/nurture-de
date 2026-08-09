@@ -25,3 +25,26 @@ Phase 2 (P1)._
 
 _Backing: `BUILD_JOURNAL.md` → "Decision — Policy A"; cross-lingual alignment measured 0.86 in
 Phase 4._
+
+## Reading the outputs beats trusting the score (Phase 8, post-run relabel)
+
+> A third of the questions I'd labelled unanswerable turned out to be answerable. I'd
+> underestimated my own corpus — specifically the English insurer pages I'd added last. The
+> system was right and my labels were wrong, and I only found that because I read the answers
+> instead of trusting the score. Behaviour-match went from 23% to 39% on a ruler fix alone,
+> with zero changes to the system.
+
+_Backing: `BUILD_JOURNAL.md` → "Post-run relabel — a third of my 'unanswerable' labels were
+wrong"; re-scored from `last_run.json`, no new API calls._
+
+## The referral layer I built into the data and forgot to wire in (Phase 8)
+
+> Two real user questions — find a midwife, book a birth-prep course — can't be answered by any
+> document; they need a live directory lookup. I'd actually built the seed of that layer
+> (`referrals.yaml`, Ammely + the statutory midwife search) back in Phase 1, and then never
+> connected it to generation. Measurement is what surfaced it: the honest answer is "no document
+> covers this," and the fix is a referral hand-off layer, not more documents. I put it in the
+> roadmap rather than let it hide.
+
+_Backing: `BUILD_JOURNAL.md` → "Finding — the referral layer … never wired into generation";
+`eval/coverage_gaps.md` group C._

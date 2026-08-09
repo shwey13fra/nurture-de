@@ -473,6 +473,46 @@ Per the reviewer, **nothing was tuned on these results** — first honest number
 any change. Fixes implied (prompt rules 3/5, relabel over-strict out_of_corpus, investigate
 cross-lingual retrieval) are decisions to take next, not taken here.
 
+### Post-run relabel — a third of my "unanswerable" labels were wrong (pessimism, caught by measurement)
+
+Acting on Results-finding #2, I re-read the answer texts for every lived-experience case I had
+labelled `out_of_corpus` and confirmed nine of them were **label errors, not system failures**:
+the corpus *does* cover them, usually via the **English TK / gesund insurer pages I had added
+last** and then under-counted. Relabelled (behaviour only — the ruler, not the system):
+
+- → `answer`: **L04, L17, L18** (grounded, complete answers).
+- → `answer_partial`: **L06, L10, L13, L15, L16, L21** (grounded but with a hedge — the rules-3/5
+  problem, a *different* defect from the label being wrong).
+
+Re-scored from `last_run.json` with **zero new API calls** (relabelling is a ruler change;
+generation outputs are byte-identical). Behaviour match on the hybrid config moved **23%→39%
+(13→22 / 56)** overall and **20%→42% (8→17 / 40)** on lived-experience; the safety bucket
+shrank from 29 to 20 cases (the 9 were never safety cases). All nine now pass because they were
+already answering correctly.
+
+**The lesson worth keeping:** my assumption about coverage was wrong **in the direction of
+pessimism**, and only measurement caught it. I trusted my own mental model of what the corpus
+held over what it actually returned — and the model was more conservative than the corpus. A
+golden set is a hypothesis about the system; reading the outputs is how you test the hypothesis,
+and here the outputs were right and the labels were wrong. (Symmetric to P7/P8: a wrong
+prediction caught by measurement beats an untested confident one — this time the wrong
+prediction was mine about my own data.)
+
+### Finding — the referral layer was built into the data and never wired into generation (a real gap)
+
+Two lived-experience cases (**L22** "where do I find a midwife for prenatal + postpartum care",
+**L23** "book a Geburtsvorbereitungskurs") are group-C questions from `coverage_gaps.md`: their
+honest answer is a *live directory lookup*, not a passage of text. `referrals.yaml` holds the
+seed of exactly that layer (Ammely, GKV Hebammensuche). I checked whether it was connected —
+`grep -rniE "referral" src/` finds **only two comments** (`extract.py`, `tools/check_robots.py`,
+both saying referrals are excluded by design); **nothing loads `referrals.yaml` into retrieval
+or generation.** The L22/L23 answers that *mention* Ammely/GKV do so because a **document**
+(`gesund_geburtsvorbereitung_en`) names those services in its own text — not because the referral
+layer was consulted. So L22/L23 **stay `out_of_corpus`** (correct: no *document* answers them),
+and this is logged as a roadmap gap, not silently absent: **the referral layer exists in the data
+and was never connected to generation.** It belongs in the Phase-13 design (`coverage_gaps.md`
+group C), wired as a hand-off tool, not folded into the citable corpus.
+
 ### Known limitation — freshness disclosure is untestable until a re-fetch
 
 Every source's `last_verified` is **2026-08-03**: the whole corpus was fetched on a single
