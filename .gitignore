@@ -21,3 +21,5 @@ __pycache__/
 
 # eval run artifact (volatile results)
 eval/last_run.json
+eval_run.log
+eval/answer_partial_review.md

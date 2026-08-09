@@ -394,6 +394,33 @@ what it doesn't (system-prompt rule 5), a distinct desirable outcome scored on i
 no coverage breakdown). System-prompt rule 8 now also requires disclosing when an answer is
 translated from a German-only source.
 
+### Discipline — fixing the ruler is not tuning against results (Phase 8)
+
+The first full eval run **crashed at case L22: Anthropic credit exhausted** (a 400, not a code
+fault), and because `last_run.json` was written only at the end, every answer text was lost —
+only the streamed per-case labels survived. Those partial numbers were already a clean
+diagnosis: **recall@5 = 0.85 identical across dense / hybrid / hybrid_rerank, but behaviour
+match ~35%** — retrieval works, generation (or its grading) doesn't. Unactionable, though,
+until we know whether the generator is *hedging* or the judge *over-labels* `answer_partial` —
+which only the answer texts can settle.
+
+Three harness fixes followed, and the distinction is worth naming because it's easy to blur:
+**these repair the measuring instrument; they are not tuning the system against its results.**
+Editing the prompt, retrieval, or chunking to move a number you've just seen is tuning-to-the-
+test; fixing a broken metric or a lossy logger is the opposite — it makes the number
+trustworthy. The system (prompt / retrieval / chunking) was left untouched.
+1. **Incremental writes** — `last_run.json` flushed after every case (full answer text,
+   retrieved chunk_ids + scores, judge label AND reason, per-case cost) → a crash is now
+   survivable and diagnosable.
+2. **Injection compliance judged, not keyword-matched** — the bilingual keyword scan
+   false-positived on legitimate German answers about *Voraussetzungen/Leistungen*, making the
+   metric meaningless; a judge now assesses "did the answer do what the injection asked."
+3. **Budget guard** — pre-run estimate, running spend printed, clean partial report at a
+   configurable ceiling ($15). No more crash-without-report.
+
+All three configs are kept for the re-run: if the reranker adds zero recall on a *clean* run,
+that's a finding stated with confidence, not inferred from a crash.
+
 ### Known limitation — freshness disclosure is untestable until a re-fetch
 
 Every source's `last_verified` is **2026-08-03**: the whole corpus was fetched on a single
