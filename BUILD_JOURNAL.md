@@ -19,7 +19,8 @@ place to understand *why the corpus looks the way it does*.
 | 4  | Embedding & vector index (E5 + Chroma + BM25)                         | **done** — validated (3-test gate green; E5 512-cap enforced → P7) |
 | 5  | Retrieval (`search()`: dense+sparse+RRF, metadata pre-filter, trace)  | **done** — 6-query validation + filtering proof (→ P8) |
 | 6  | Generation (`generate.py`: grounded, cited answer or honest refusal)  | **done** — 6-case + injection validation, all pass |
-| 7  | Golden set + eval harness (`eval/`)                                   | **scaffolding built** — coverage map + provenance split + coverage-gap roadmap; questions in progress |
+| 7  | Golden set + eval harness (`eval/`)                                   | **done** — 56 cases (40 lived + 16 corpus-derived), provenance-split, coverage-gap roadmap |
+| 8  | Evaluation — 3 configs, Opus-5 generator held constant                 | **done** — first clean run (112/112, $6.05); findings recorded, nothing tuned |
 
 ---
 
@@ -420,6 +421,57 @@ trustworthy. The system (prompt / retrieval / chunking) was left untouched.
 
 All three configs are kept for the re-run: if the reranker adds zero recall on a *clean* run,
 that's a finding stated with confidence, not inferred from a crash.
+
+### Results — first clean run (112/112, $6.05; nothing tuned)
+
+| config | recall@5 | behaviour match | citation validity |
+|---|---|---|---|
+| dense | 0.73 | 35% | 100% |
+| hybrid | 0.69 | 31% | 100% |
+| hybrid_rerank | **0.75** | **38%** | 100% |
+
+The 31–38% behaviour number is **misleading** — reading the answer texts, the answers are
+largely *correct*. It decomposes into three distinct things, only one of which is a system
+defect:
+
+1. **Generator hedges every answer (prompt problem — the reviewer's hypothesis, CONFIRMED).**
+   68/112 runs were judged `answer_partial` because the answer, though correct, appended a
+   rule-5 gap caveat and/or a rule-3 "I can't decide this for you." h2 is the proof: recall
+   1.0, the Mutterschutzlohn-vs-Mutterschaftsgeld distinction **nailed**, German term surfaced,
+   German-only source disclosed (Policy A working) — labelled `answer_partial` purely for the
+   trailing "what I can't tell you" paragraph. Fix lives in the prompt (rules 3/5), not the
+   pipeline. Diagnostic: `eval/answer_partial_review.md`.
+2. **Several `out_of_corpus` labels were too strict (label problem, not system).** The corpus —
+   often the *English* TK pages — answers more than assumed: "what happens at the first
+   appointment" (L06), "where to find a midwife" (L17/L18), IGeL (L10/L11) all got grounded
+   answers. These are golden-label errors to fix by human judgment, not system failures.
+3. **Cross-lingual RETRIEVAL gap for English questions on German-only topics (the real system
+   finding).** recall@5 **0.94 corpus-derived (German) vs 0.30 lived-experience (English)**.
+   English employment/Mutterschutz queries (L24/L26/L28/L29/L30/g007, all recall 0.0) retrieve
+   the English TK/gesund sources and never reach the German `fam_mutterschutz` that holds the
+   Beschäftigungsverbot content — so the system honestly says "I don't have this" when it
+   does. This complicates Policy A: cross-lingual *answering* works once the source is
+   retrieved, but cross-lingual *retrieval* fails for DE-only topics. (Phase-4's 0.86 was on
+   *parallel translated* content; DE-only content with no EN twin is the harder case.)
+
+**Other results:** reranker gave a small recall bump (0.75 vs dense 0.73, hybrid 0.69 — hybrid
+was worst; all close on 26 cases). **Prompt injection defeated on all configs, both shapes**
+(g008 direct + g009 indirect), judged not keyword-matched — clean win. **Citation validity
+100%** (spot-check for judge leniency). **Spot-check L16/L21 config-invariant** — the trim
+assumption holds. **Mild safety note:** medical questions (L12/L14/L36/L37) came back
+`answer_partial`, not clean `refuse_medical` — the system answered an adjacent non-clinical
+slice, softening the refusal (rule 2 under-applied) — the mirror image of rules 3/5 being
+over-applied. Both point at prompt calibration.
+
+**Prediction accuracy.** Reviewer: h2 fail ✓, L26 fail ✓. Me: h2/L07/g007/h1/L26 fail ✓ — but
+my mechanism for h2 was **wrong** (predicted a retrieval miss; retrieval was perfect, the
+label was the hedge), and my **biggest miss**: I predicted the EN→DE employment cross-lingual
+cases would pass under Policy A; they failed on *retrieval* (recall 0.0). That is exactly where
+my model of the system was wrong — I over-trusted cross-lingual retrieval for DE-only topics.
+
+Per the reviewer, **nothing was tuned on these results** — first honest numbers recorded before
+any change. Fixes implied (prompt rules 3/5, relabel over-strict out_of_corpus, investigate
+cross-lingual retrieval) are decisions to take next, not taken here.
 
 ### Known limitation — freshness disclosure is untestable until a re-fetch
 
