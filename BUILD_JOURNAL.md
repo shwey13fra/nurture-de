@@ -986,3 +986,72 @@ convincing and proven less.
 **Scope held.** The tools report what sources say and always return chunk_ids; they never state a
 benefit amount as advice and never determine eligibility; medical questions are steered to a doctor
 in the descriptions themselves. Next: Phase 11 (LangGraph) wires these tools into generation.
+
+## Phase 11 — the orchestration workflow (LangGraph)
+
+**Workflow, not agent — the decision, made before any code** (`knowledge/phase11-graph-decision.md`).
+Per Anthropic's *Building Effective Agents*, a workflow moves LLMs and tools through **predefined
+code paths**; an agent lets the model direct its own tool use. NurtureDE is a workflow: two routing
+branches (medical vs informational; profile complete vs not) and **one** bounded evaluator-optimizer
+loop (grade → rewrite → retrieve, **hard-capped at 2**), all fixed in code. The article says use a
+workflow when the task decomposes cleanly into fixed subtasks — this one does — and the domain
+raises the stakes: a wrong answer means a missed legal deadline, so **bounded and traceable beats
+flexible**. An agent that "figures out" a Mutterschutz deadline is the exact failure this project
+exists to prevent (same reason Phase 9 put the date arithmetic in Python). Less autonomy is the
+point. Patterns composed: **routing** + **evaluator-optimizer** + **prompt chaining**; deliberately
+NOT orchestrator-workers and NOT an autonomous agent. SDK: `langgraph` 1.2.11.
+
+**Reuse, no reimplementation.** `Retriever.search` (+ `Reranker`, `RERANK_POOL=100`), the Phase-9
+`calculate_timeline`, the existing `answer_system_prompt.md`, and the Phase-5 `RetrievalTrace` —
+which the new `GraphTrace` **embeds** (one per retrieval attempt) rather than paralleling, so the
+Phase-12 visualiser reads one trace object showing the node path, which branch fired, and the retry
+count.
+
+**Structured output where it earns its keep.** `grade_evidence` and `verify_citations` return typed
+JSON the graph branches on — that is where "evaluator/verifier" stops being a buzzword. The final
+answer is a Pydantic `FinalPlan` (summary, timeline[], citations[], information_date,
+needs_professional_confirmation[]). The **dates in timeline[] come from the deterministic tool, not
+the model** — the model writes prose and picks citations from the retrieved documents only; the
+timeline's authoritative `source_chunk` is filled in code. (Fix applied mid-build: the injected
+`<computed_timeline>` was stripped of chunk_ids so the model cannot present a timeline source as a
+retrieved document it "cited"; citations[] only ever contains chunks that were actually retrieved.)
+
+**The four verification paths (all confirmed by running `src/graph.py`):**
+1. *"When does Mutterschutz start if I'm due 15 March 2027 and employed?"* →
+   `classify_intent → check_profile → retrieve → grade_evidence(sufficient) → calculate_timeline →
+   generate_structured_plan → verify_citations`, **0 retries**, dates 2027-02-01 → 2027-05-10.
+2. *"How much will I get?"* → `classify_intent → check_profile → request_attributes` (missing
+   employment + insurance).
+3. *"Is cramping at 30 weeks normal?"* → `classify_intent → safe_referral`.
+4. *civil-servant Bavaria specifics* (a real corpus gap) → the rewrite loop fires **twice, exits at
+   the cap**, and produces an honest "I don't have the Bavarian rules — ask your Personalstelle"
+   partial. It tried, couldn't recover a genuine gap, and degraded gracefully.
+
+**The bug the trace caught — and the lesson.** Scenario 1 first ran the retry loop to the cap and
+produced a weaker (but still honest) answer. Reading the *per-node trace* (not the final output)
+showed why: `grade_evidence` was correctly reporting the evidence insufficient — the canonical
+timeline chunk `…ac481a5a` never appeared in the reranked top-4. The cause was mine: `_filters_from`
+mapped `employment_status="employed"` to a `user_type="employed"` filter, but the corpus tags that
+facet **`employee`**, and maternity-protection chunks carry no `any` passthrough — so the filter
+silently **excluded every maternity-protection chunk**. Fixing the vocab mapping made scenario 1
+clean (single retrieval, grade sufficient, 0 retries). The lesson is the Phase-8 one again: **the
+graph's honest degradation masked the defect** — it returned correct deterministic dates and a
+truthful partial even while a filter was starving retrieval — and only the per-node trace, not the
+output, revealed it. Instrument the path, read the path. The deterministic-dates split earned its
+keep here too: even with retrieval broken, `timeline[]` still carried the right dates and their
+`source_chunk`.
+
+**Retry cap is a tested invariant.** `tests/test_graph_routing.py` (17 fast unit tests, no API)
+pins the branch logic — especially that `_route_evidence` exits at `retry_count == MAX_RETRIES (2)`
+even when evidence is still insufficient, and cannot loop beyond it. The four end-to-end paths are
+verified by running the graph (they cost API); the routing that must never regress is unit-tested.
+
+**LangSmith.** Enabled purely by env vars (`LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY=…`) —
+LangGraph auto-traces, zero code coupling. Honest gap: I have no LangSmith key and can't screenshot
+its UI from here, so the printed per-node trace (captured above for each scenario, and emitted on
+every run via `print_trace`) is the substitute artifact — and for the "did the retry loop fire?"
+question it shows the same thing a screenshot would, at node granularity.
+
+**Scope held.** Exactly the ten nodes specified; three "wants another node" temptations
+(translate, freshness, parallel retrieval) are logged as roadmap items in the decision doc, not
+added. Next: Phase 12 (the visualiser) renders `GraphTrace`.
