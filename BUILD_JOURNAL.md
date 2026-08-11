@@ -975,6 +975,14 @@ would. To see it live: restart Claude Code in this repo, run `/mcp` to confirm
 `germany-family-support` is connected, then ask "When does my Mutterschutz start if I'm due 15 March
 2027 and employed?" and watch it call `calculate_pregnancy_timeline`.
 
+**Why the routing table beats the screenshot I was asked for.** A screenshot shows *one* tool
+firing once — evidence that the wiring works, not that the descriptions do. The 5/5 routing table
+shows all three tools each firing on a fitting question *and* a correct no-tool decision on the
+medical one: that is evidence the descriptions actually discriminate, which is the thing under test.
+Running it on Haiku 4.5 makes it a conservative test rather than a flattering one — the cheapest
+model clearing the bar means a stronger host model will too. A picture would have looked more
+convincing and proven less.
+
 **Scope held.** The tools report what sources say and always return chunk_ids; they never state a
 benefit amount as advice and never determine eligibility; medical questions are steered to a doctor
 in the descriptions themselves. Next: Phase 11 (LangGraph) wires these tools into generation.
