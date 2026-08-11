@@ -864,3 +864,55 @@ refusals preserved confirm it's safe.
 
 Phase 8 closed. Two PM-2 coverage gaps logged (`eval/coverage_gaps.md`: student maternity finance,
 civil-servant per-Bundesland Mutterschutz). Moving to Phase 9.
+
+## Phase 9 — Deterministic timeline tool (`src/tools/timeline.py`)
+
+**The determinism rationale (the whole point of the phase).** An LLM asked to do date arithmetic
+is right *most of the time*, and "most of the time" is unacceptable for a legal deadline — a
+wrong Mutterschutz start date can cost someone a benefit or a job protection they were entitled
+to. So the labour is split: the model *retrieves the rule and explains it*; Python *applies the
+rule* with calendar arithmetic that is exact by construction. `timeline.py` has **no model call
+anywhere**, verified (`grep` for anthropic/requests/messages → none). `calculate_timeline(due_date,
+employment_status, …)` returns a structured dict of dates, each carrying the rule it came from and
+the `source_chunk` that states it. A date without a traceable rule is not returned.
+
+**Corpus-verification-first, not from memory.** Before writing a line of code I retrieved every
+rule from `data/chunks.jsonl` and pinned its chunk_id. All five timeline rules live on federal
+Familienportal pages (verified 2026-08-03); a post-hoc check confirms all 5 cited chunk_ids exist
+in the corpus. The corpus turned out to state the arithmetic precisely, including the subtle part:
+
+- begins 6 weeks before the expected date; normally ends 8 weeks after birth (`…__ac481a5a`)
+- **born early (not premature): the after-period lengthens by exactly the days come early, so the
+  total stays 14 weeks** — i.e. the end lands on `expected + 8 weeks`, not `birth + 8 weeks`
+- **born late: the full 8 weeks after the *actual* birth still apply** (so the total runs longer)
+- premature / multiple / disability-within-8-weeks → **12 weeks flat from actual birth**, and this
+  does *not* stack with the early-days adjustment (`…e7d7850e`, `…cef1fbda`)
+
+**One window found, one honestly absent.** The corpus states the Elterngeld window (apply after
+birth, within the first 3 months of life, max 3 months retroactive — `fam_elterngeld_antrag__…__ab9bc2fa`),
+so the tool emits `elterngeld_apply_by = add_months(birth, 3)`. It states **no** Mutterschaftsgeld
+application window — so the tool does not invent one; it returns a caveat pointing to the
+Krankenkasse. Same Rule-5 / PM-2 discipline as the generator, now applied inside a tool: absence
+is reported, not filled.
+
+**TDD, real assertions, hand-calculated.** `tests/test_timeline.py` — 36 stdlib-`unittest` tests
+(pytest isn't installed; no new dependency). Every expected date is a hand-calculated literal,
+never asserted against what the function returns. Watched them fail (module missing) before
+implementing, then pass. Covers: standard planning case, birth on the expected date, two weeks
+early (after-period extends by exactly those days), two weeks late, multiple → 12 weeks,
+multiple+early (no stacking), year boundary, leap-year 29 Feb crossing, `add_months` month-end
+clamp (31 Jan → 28/29 Feb), civil-servant separate-regime flag, and invalid input (past due date,
+implausibly far future, malformed string, future birth date, unknown employment status).
+
+**Design notes.** Core signature is the 2-arg `calculate_timeline(due_date, employment_status)`;
+the birth-scenario behaviour the tests require is reached via keyword-only optionals
+(`actual_birth_date`, `multiple_birth`, `premature`, `disability_diagnosed_within_8_weeks`), plus a
+`today=` injection so the clock-dependent validation is deterministic in tests. `employment_status`
+does not move the statutory dates (they are the same for everyone) — it shapes
+`needs_confirmation_from` and, for `civil-servant`, flags that the general MuSchG dates may not
+apply (the c08/PM-2 finding, now enforced in code, citing `…__eb325d8b`).
+
+**Scope held.** Dates only — the tool never states an amount and never decides eligibility (a test
+asserts the output contains neither). Standalone and tested; **not** wired into generation or the
+graph — that is Phase 11 (the output shape is already a clean dict, ready for a Pydantic model).
+Next: Phase 10 (MCP).
