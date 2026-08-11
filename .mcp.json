@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "germany-family-support": {
+      "command": ".venv/Scripts/python.exe",
+      "args": ["mcp_server.py"]
+    }
+  }
+}

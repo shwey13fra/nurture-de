@@ -110,3 +110,18 @@ watchfiles==1.2.0
 websocket-client==1.9.0
 websockets==17.0.1
 yarl==1.24.5
+
+# --- Phase 10: MCP server (mcp[cli] v2 stable line) ---
+mcp==2.0.0
+mcp-types==2.0.0
+httpx2==2.10.0
+httpcore2==2.10.0
+starlette==1.6.0
+sse-starlette==3.4.8
+python-multipart==0.0.32
+PyJWT==2.13.0
+cryptography==50.0.0
+cffi==2.1.1
+pycparser==3.0
+pywin32==312
+truststore==0.10.4

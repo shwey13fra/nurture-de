@@ -916,3 +916,65 @@ apply (the c08/PM-2 finding, now enforced in code, citing `…__eb325d8b`).
 asserts the output contains neither). Standalone and tested; **not** wired into generation or the
 graph — that is Phase 11 (the output shape is already a clean dict, ready for a Pydantic model).
 Next: Phase 10 (MCP).
+
+## Phase 10 — MCP server (`mcp_server.py`)
+
+**Why MCP — the N×M problem.** Without a shared protocol, every model host (Claude Desktop, Claude
+Code, an IDE) needs a bespoke integration with every capability (our retriever, our timeline tool):
+N hosts × M capabilities of glue. MCP collapses that to N + M — write the server once, any client
+consumes it. This server exposes the corpus + the Phase-9 timeline over stdio: three tools
+(`search_official_information`, `calculate_pregnancy_timeline`, `explain_german_administrative_term`),
+one resource (`germany-family-support://topics`, topic → chunk-count coverage), one prompt
+(`prepare_expat_pregnancy_plan`). Retrieval is **reused, not reimplemented** — the tools call the
+existing `Retriever.search(mode="hybrid")` and return chunk_ids so a client can cite.
+
+**SDK version: `mcp` 2.0.0 — the v2 stable line**, installed as `mcp[cli]`. Reported before writing
+anything, per the brief. My training-era tutorials use the 1.x `FastMCP` API, which does **not**
+exist in v2 — I verified the real surface from the installed package + the current docs rather than
+memory. The concrete v2 deltas that would have broken a copied 1.x tutorial:
+- high-level class is `from mcp.server import MCPServer` (not `FastMCP`); decorators `@mcp.tool()`,
+  `@mcp.resource(uri)`, `@mcp.prompt()`; run with `mcp.run(transport="stdio")`
+- on the client side, `Tool.inputSchema` (v1 camelCase) is now `Tool.input_schema` (snake_case) —
+  the one thing that actually bit me, caught immediately by the roundtrip test
+- the HTTP client dep is `httpx2`, pulled in by `mcp` itself
+
+**The docstring-as-prompt finding (the part that mattered most).** A tool's description is the only
+thing the model reads to decide whether to call it — a vague description is the single most common
+reason a good tool never fires. So the descriptions were written by hand as prompts, and crucially
+they steer *away* from wrong calls as well as toward right ones: every tool description names what
+it is **not** for (medical questions → a doctor/midwife, not this corpus). Verified with a routing
+probe — the server's *real* tool schemas fed to a model on natural questions:
+
+| question | routed to |
+|---|---|
+| "When does my Mutterschutz start (due 2027-03-15, employed)?" | `calculate_pregnancy_timeline` ✓ |
+| "What does 'Elternzeit' mean?" | `explain_german_administrative_term` ✓ |
+| "Rules about night shifts while pregnant?" | `search_official_information` ✓ |
+| "30 weeks pregnant, sharp pain and bleeding — what do I do?" | **no tool** ✓ (advised a doctor) |
+| "What does a source say about how Elterngeld is calculated?" | `search_official_information` ✓ |
+
+**5/5, on Haiku 4.5** — a deliberately conservative test: if the cheapest model routes correctly
+(including refusing to touch a tool for the medical question), a stronger host model will too. The
+medical row is the important one — the steer-away clause in the description did its job.
+
+**stdio correctness + the ~17s model load.** On the stdio transport stdout IS the JSON-RPC channel,
+so any stray print corrupts the protocol. Probed it: all model-load noise (HF warnings, tqdm bars)
+goes to **stderr**, stdout stays clean — verified before trusting it. The E5+BM25 load (~15-17s on
+first query) is handled by warming the `Retriever` in a **daemon thread at startup**, so the MCP
+handshake is instant and a search arriving before warm-up simply blocks on the lock and returns
+(never an indefinite hang). All server-side logging is forced to stderr.
+
+**Verification.** (1) Protocol roundtrip — the Inspector's job, done headless and committed as
+`tests/test_mcp_server.py`: launches the server over real stdio and asserts every tool, the
+resource, and the prompt (no API key; loads models once). (2) The routing probe above (API, kept in
+scratchpad — not committed, since it spends). (3) Wired into Claude Code via a project `.mcp.json`.
+Honest gap: I can't produce the GUI screenshot of Claude Code calling the retriever from here — the
+headless roundtrip + the routing table are the substitute evidence, and they isolate protocol
+correctness and tool-routing (the two things a screenshot would show) more precisely than a picture
+would. To see it live: restart Claude Code in this repo, run `/mcp` to confirm
+`germany-family-support` is connected, then ask "When does my Mutterschutz start if I'm due 15 March
+2027 and employed?" and watch it call `calculate_pregnancy_timeline`.
+
+**Scope held.** The tools report what sources say and always return chunk_ids; they never state a
+benefit amount as advice and never determine eligibility; medical questions are steered to a doctor
+in the descriptions themselves. Next: Phase 11 (LangGraph) wires these tools into generation.
