@@ -48,3 +48,31 @@ wrong"; re-scored from `last_run.json`, no new API calls._
 
 _Backing: `BUILD_JOURNAL.md` → "Finding — the referral layer … never wired into generation";
 `eval/coverage_gaps.md` group C._
+
+## "Not found" vs "found and discarded" — the metric hid the cheap fix (Phase 8, found by hand)
+
+> My eval said retrieval failed on English queries about German-only content. Running the
+> system by hand showed the correct German chunk was being retrieved at rank 6 and cut by a
+> top-4 window. Recall@5 said "not found"; the trace said "found and discarded." Those need
+> completely different fixes, and only one of them was true.
+
+_Backing: `BUILD_JOURNAL.md` → "P8 post-eval — 'retrieval failed' was two different failures";
+`scratchpad/pool_probe.py` — reranking a 100-wide pool recovers 5 of 6 cases into the top-4 with
+no representation changes; the lone holdout (g007) is the reverse cross-lingual direction._
+
+## Retraction: "reranking didn't help" was a measurement bug, not a result (Phase 8)
+
+> I'd reported that the reranker added almost nothing on this corpus. That was wrong — and the
+> interesting part is why. My harness fed the cross-encoder a 10-candidate pool while the chunks
+> it needed to rescue sat at ranks 20-27, so it never saw them. The component was fine; the
+> measurement was invalid. I'd compared three configs without checking each was given a fair
+> chance to work. Now I state the rule out loud: a no-op result and a starved-input result look
+> identical in the number and mean opposite things — verify the component was actually exercised
+> before you conclude it doesn't help.
+
+_Supersedes the "reranker gave a small recall bump / all close" reading recorded in
+`BUILD_JOURNAL.md` Phase-8 results (kept, marked SUPERSEDED — the retraction is the more useful
+record). Backing: `BUILD_JOURNAL.md` → "Retraction — the hybrid_rerank row measured a starved
+reranker"; the fix (`RERANK_POOL=100`) recovers 5 of 6 cross-lingual cases. Real cost is latency,
+not dollars: ~2 min/query to rerank 100 candidates on CPU (~4× a 20-pool) → needs a GPU/hosted
+reranker in production._

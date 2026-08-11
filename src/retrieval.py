@@ -246,6 +246,15 @@ class SparseIndex:
 # --- reranker (Phase 8) ------------------------------------------------------
 RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"   # multilingual cross-encoder (XLM-R-large); handles DE
 
+# Width of the candidate pool handed to the cross-encoder on the rerank path. 100, not the
+# retrieval default of 20, and not 50 — this is load-bearing and measured, not a round number:
+# on the English->German cross-lingual cases the correct German chunk can sit at fused rank ~43
+# (case L30). A 50-wide pool leaves it at reranked rank 4 — one short of K_CONTEXT=4, so it never
+# reaches the model. A 100-wide pool recovers it to rank 0. (The earlier Phase-8 eval reranked
+# only the top-10 fused, so the cross-encoder never saw these chunks — see BUILD_JOURNAL P8
+# retraction.) Cost: ~5x the cross-encoder compute of a 20-pool (see Phase-13 latency note).
+RERANK_POOL = 100
+
 
 class Reranker:
     """Cross-encoder reranker: scores each (query, passage) pair jointly and reorders.
@@ -359,14 +368,19 @@ class Retriever:
         return self.sparse
 
     def search(self, query: str, k: int = 10, filters: dict | None = None,
-               mode: str = "hybrid", trace: bool = False):
+               mode: str = "hybrid", trace: bool = False, pool: int | None = None):
         """mode: 'hybrid' (RRF of dense+sparse) | 'dense' | 'sparse'.
+
+        `pool` overrides how many candidates are pulled from EACH index before filtering +
+        fusion (default `self.POOL`=20). The rerank path passes a larger pool (RERANK_POOL)
+        so the cross-encoder can reach a correct chunk that RRF buried below the default cut.
 
         Metadata filtering is a PRE-filter: candidates are dropped before fusion, so an
         aggressive filter can leave the fused pool below k (unlike a post-filter, which
         can't). That case is recorded on the trace (`underfilled`) rather than silently
         returning short. Returns list[RetrievedChunk]; if trace=True, (list, trace).
         """
+        pool = pool or self.POOL
         tr = RetrievalTrace(query=query, mode=mode, filters=filters) if trace else None
         t0 = time.perf_counter()
 
@@ -374,14 +388,14 @@ class Retriever:
         if mode in ("hybrid", "dense"):
             ts = time.perf_counter()
             qv = self.embedder.embed_query(query)          # "query: " prefix (asymmetric E5)
-            dense_hits = self.store.query(qv, self.POOL)
+            dense_hits = self.store.query(qv, pool)
             if tr:
                 tr.timings_ms["dense_ms"] = (time.perf_counter() - ts) * 1000
 
         sparse_hits: list[dict] = []
         if mode in ("hybrid", "sparse"):
             ts = time.perf_counter()
-            sparse_hits = self._sparse_index().query(query, self.POOL)
+            sparse_hits = self._sparse_index().query(query, pool)
             if tr:
                 tr.timings_ms["sparse_ms"] = (time.perf_counter() - ts) * 1000
 

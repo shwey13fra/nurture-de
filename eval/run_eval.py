@@ -46,7 +46,7 @@ if not os.environ.get("ANTHROPIC_API_KEY"):
                 os.environ["ANTHROPIC_API_KEY"] = line.split("=", 1)[1].strip()
 
 import generate  # noqa: E402  (generator: Opus 5, held constant)
-from retrieval import Retriever  # noqa: E402
+from retrieval import Retriever, RERANK_POOL  # noqa: E402  (RERANK_POOL=100, see retrieval.py)
 
 GOLDEN = _ROOT / "eval" / "golden.jsonl"
 
@@ -119,10 +119,15 @@ def rerank(question: str, hits):
 
 def retrieve_for_config(R: Retriever, question: str, config: str, filters: dict | None):
     mode = "dense" if config == "dense" else "hybrid"
-    hits = R.search(question, k=K_RETRIEVE, filters=filters or None, mode=mode)
     if config == "hybrid_rerank":
-        hits = rerank(question, hits)
-    return hits
+        # Feed the cross-encoder a wide candidate pool (RERANK_POOL=100), THEN rerank, THEN
+        # keep the top K_RETRIEVE. Retrieving only K_RETRIEVE=10 first (the pre-Phase-8-retraction
+        # behaviour) starved the reranker: cross-lingual chunks at fused rank 20-43 never entered
+        # the pool it saw. See retrieval.RERANK_POOL and BUILD_JOURNAL P8 retraction.
+        pool_hits = R.search(question, k=RERANK_POOL, filters=filters or None,
+                             mode="hybrid", pool=RERANK_POOL)
+        return rerank(question, pool_hits)[:K_RETRIEVE]
+    return R.search(question, k=K_RETRIEVE, filters=filters or None, mode=mode)
 
 
 def cited_ids(answer: str, context_ids: list[str]) -> list[str]:
@@ -236,17 +241,21 @@ def load_golden(limit: int | None) -> list[dict]:
     return rows[:limit] if limit else rows
 
 
-def evaluate(limit: int | None, fresh: bool = False) -> None:
+def evaluate(limit: int | None, fresh: bool = False,
+             exclude_behaviour: frozenset[str] = frozenset(),
+             out_path: Path | None = None,
+             ids: frozenset[str] = frozenset()) -> None:
     if not os.environ.get("ANTHROPIC_API_KEY", "").startswith("sk-ant-"):
         sys.exit("No ANTHROPIC_API_KEY (env or .env). Set it before running the eval.")
 
-    cases = load_golden(limit)
+    cases = [c for c in load_golden(limit) if c["expected_behaviour"] not in exclude_behaviour
+             and (not ids or c["id"] in ids)]
     R = Retriever()   # one model load, reused across every case and config
     n_runs = sum(len(configs_for(c)) for c in cases)
     print(f"Evaluating {len(cases)} golden cases ({n_runs} case×config runs) "
           f"(generator={generate.MODEL}, judge={JUDGE_MODEL}, configs={CONFIGS})\n", flush=True)
 
-    run_path = _ROOT / "eval" / "last_run.json"
+    run_path = out_path or (_ROOT / "eval" / "last_run.json")
     records, total_cost, halted, done = [], 0.0, False, set()
     if run_path.exists() and not fresh:                      # RESUME — skip runs already captured
         records = json.loads(run_path.read_text(encoding="utf-8"))
@@ -321,10 +330,13 @@ def evaluate(limit: int | None, fresh: bool = False) -> None:
                   + (f" complied={complied}" if complied is not None else "")
                   + f"  (${total_cost:.2f})", flush=True)
 
-    _report(records, halted)
+    # keep the answer_partial diagnostic next to whichever run file we wrote
+    partial_path = (run_path.with_name(run_path.stem + "_answer_partial_review.md")
+                    if out_path else _ROOT / "eval" / "answer_partial_review.md")
+    _report(records, halted, partial_path)
 
 
-def _write_partial_review(partials: list[dict]) -> None:
+def _write_partial_review(partials: list[dict], path: Path) -> None:
     """The diagnostic the reviewer reads: every answer_partial run, in full — is it a correct-
     but-hedged answer (prompt fix) or a genuinely incomplete one (context-assembly fix)?"""
     out = ["# answer_partial diagnostic review\n",
@@ -340,10 +352,12 @@ def _write_partial_review(partials: list[dict]) -> None:
                 f"**Retrieved top-{K_RECALL}:** {[(x['chunk_id'], x['score']) for x in r.get('retrieved', [])]}",
                 f"**Citation validity:** {r['cit_supported']}/{r['cit_checked']}\n",
                 "**Answer:**\n", r["answer"]]
-    (_ROOT / "eval" / "answer_partial_review.md").write_text("\n".join(out), encoding="utf-8")
+    path.write_text("\n".join(out), encoding="utf-8")
 
 
-def _report(records: list[dict], halted: bool = False) -> None:
+def _report(records: list[dict], halted: bool = False,
+            partial_path: Path | None = None) -> None:
+    partial_path = partial_path or (_ROOT / "eval" / "answer_partial_review.md")
     def pct(passes, total):
         return f"{100*sum(passes)/total:.0f}% ({sum(passes)}/{total})" if total else "—"
     def mean(xs):
@@ -419,9 +433,13 @@ def _report(records: list[dict], halted: bool = False) -> None:
 
     # --- answer_partial diagnostic: the layer-attribution question ---
     partials = [r for r in records if r["judged"] == "answer_partial"]
-    _write_partial_review(partials)
+    _write_partial_review(partials, partial_path)
+    try:
+        shown = partial_path.resolve().relative_to(_ROOT)
+    except ValueError:
+        shown = partial_path
     print(f"\n### answer_partial diagnostic — {len(partials)} runs "
-          f"→ eval/answer_partial_review.md (full answer + judge reason + cited chunks)")
+          f"→ {shown} (full answer + judge reason + cited chunks)")
     for r in sorted(partials, key=lambda r: (r["id"], r["config"]))[:8]:
         print(f"- {r['id']}/{r['config']} (exp {r['expected']}): {(r.get('judge_reason') or '')[:100]}")
 
@@ -436,10 +454,20 @@ if __name__ == "__main__":
     ap.add_argument("--configs", default=None,
                     help='comma-separated configs (default: dense,hybrid,hybrid_rerank)')
     ap.add_argument("--budget", type=float, default=None, help="cost ceiling in USD (default 15)")
-    ap.add_argument("--fresh", action="store_true", help="ignore last_run.json and start over")
+    ap.add_argument("--fresh", action="store_true", help="ignore the run file and start over")
+    ap.add_argument("--exclude-behaviour", default=None,
+                    help="comma-separated expected_behaviour labels to skip (e.g. out_of_corpus)")
+    ap.add_argument("--out", default=None,
+                    help="run-record path (default eval/last_run.json); use a fresh name to "
+                         "preserve a prior baseline run")
+    ap.add_argument("--ids", default=None,
+                    help="comma-separated case ids to run (e.g. L12,L14); default: all cases")
     args = ap.parse_args()
     if args.configs:
         CONFIGS[:] = [c.strip() for c in args.configs.split(",")]
     if args.budget:
         BUDGET_CEILING = args.budget
-    evaluate(args.limit, fresh=args.fresh)
+    exclude = frozenset(b.strip() for b in args.exclude_behaviour.split(",")) if args.exclude_behaviour else frozenset()
+    out_path = Path(args.out) if args.out else None
+    ids = frozenset(i.strip() for i in args.ids.split(",")) if args.ids else frozenset()
+    evaluate(args.limit, fresh=args.fresh, exclude_behaviour=exclude, out_path=out_path, ids=ids)

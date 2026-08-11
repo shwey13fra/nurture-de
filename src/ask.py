@@ -31,7 +31,7 @@ if not os.environ.get("ANTHROPIC_API_KEY"):
                 os.environ["ANTHROPIC_API_KEY"] = line.split("=", 1)[1].strip()
 
 import generate  # noqa: E402
-from retrieval import Retriever  # noqa: E402
+from retrieval import Retriever, RERANK_POOL  # noqa: E402  (RERANK_POOL=100, see retrieval.py)
 
 K_RETRIEVE = 10
 _reranker = None
@@ -46,10 +46,15 @@ def _rerank(question, hits):
 
 
 def ask(R: Retriever, question: str, filters: dict, rerank: bool, trace: bool) -> None:
-    result = R.search(question, k=K_RETRIEVE, filters=filters or None, mode="hybrid", trace=trace)
+    # On the rerank path, pull a wide RERANK_POOL of candidates so the cross-encoder can reach a
+    # correct chunk that RRF buried below the default top-10 (the cross-lingual case). Then rerank
+    # and keep the top K_RETRIEVE. Without rerank, retrieve the normal top-K_RETRIEVE.
+    k = RERANK_POOL if rerank else K_RETRIEVE
+    result = R.search(question, k=k, filters=filters or None, mode="hybrid",
+                      pool=(RERANK_POOL if rerank else None), trace=trace)
     hits, tr = (result if trace else (result, None))
     if rerank:
-        hits = _rerank(question, hits)
+        hits = _rerank(question, hits)[:K_RETRIEVE]
 
     print("\n" + "─" * 78)
     print(f"RETRIEVED (top {min(K_RETRIEVE, len(hits))}{' · reranked' if rerank else ''}"

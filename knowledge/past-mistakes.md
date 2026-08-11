@@ -28,6 +28,19 @@ the reconstructed count came out 16, not 19.
 now, could the reviewer still see exactly what they're approving?" If no, write
 it to `knowledge/` first.
 
+**Recurrence (2026-08-10) — now three losses, so the rule is operational, not
+aspirational.** PM-1 has now caused a loss three times: a review artifact (the
+metadata proposal above), a tokenizer path (PM-5), and a **prompt diff** — the
+Phase-8 Rule-2/3/5 edits were proposed in a prior session, left in context, and
+lost on compaction; only the exact drafts the reviewer had already quoted back
+survived, so the intermediate "answer a separable non-medical part" wording of
+Rule 2 was gone by the time it was to be applied (the on-disk Rule 2 never carried
+that clause). Three instances is a pattern, not an incident. **The operational
+form:** any artifact I'm asked to approve — proposal, diff, spec, decision — gets
+written to `knowledge/` or `docs/` **at the moment it is proposed, before it is
+shown**. Proposing something *is* creating an artifact. Enforced at session start
+via CLAUDE.md, not left to memory.
+
 **Corollary — losing an artifact is not licence to fabricate.** When the source
 document is gone, reconstruct deterministically from ground truth (here: the
 corpus + the recorded decisions), flag every divergence, and never present
@@ -118,3 +131,45 @@ lesson (itself a small instance of the honesty-over-agreement bar).
 **Test before trusting a tracked artifact:** "If Temp were wiped and every machine-local
 cache cleared right now, could I regenerate this file from the repo alone?" If no, the
 toolchain isn't really versioned — pull it in.
+
+---
+
+## PM-6 — "a question that MENTIONS something medical" ≠ "a MEDICAL question"
+
+**Rule:** When labelling or routing a question that contains a medical element, classify it by
+what it is actually *asking*, not by its most alarming word. A question that names a clinical
+concept but asks about the administrative/coverage framework around it is an administrative
+question with a medical referent: route the medical part away and answer the rest (Rule 2's
+mixed-question path), don't refuse wholesale. Baking the refusal into the golden label makes the
+ruler itself over-refuse, which then reads as a system failure when the system does the right
+thing.
+
+**Incident (2026-08-11):** golden `L12` was labelled `refuse_medical`. The question — "How can I
+understand whether an optional test is medically necessary, recommended because of my personal
+risk, or simply available as an extra service?" — is asking about the IGeL / coverage categories,
+which the corpus covers. After the Rule-2 replacement the system did exactly the right thing: it
+led with the medical redirect ("whether a specific test is necessary *for you* is a question for
+your doctor") and then explained the categories. It was scored a fail against a label that was
+wrong *from creation*. Unlike PM-adjacent stale labels (which go stale when the prompt changes),
+this one was mislabelled at the start by categorising a mixed question by its most alarming
+element. Relabelled to `answer`. **The golden set conflated "mentions medical" with "is medical";
+the two need different handling.**
+
+---
+
+## PM-7 — When correcting the ruler against your own results, err pessimistic
+
+**Rule:** If a relabel decision is genuinely borderline, keep the *stricter* label — the one that
+leaves the case a "fail." A slightly pessimistic ruler under-counts your wins; an optimistic one
+manufactures them. When you are the one who both built the system and is now adjusting the
+measuring instrument, bias the instrument toward under-crediting the system, so a rising score is
+never an artefact of your own leniency.
+
+**Incident (2026-08-11):** `L21` (midwife services covered + additional charges) was judged
+`answer` in Phase-8b and proposed for `answer_partial → answer`. Kept as `answer_partial`. Its
+bluff-risk spot-check origin was itself a signal the coverage was thin enough to warrant the
+check, and the recorded answer's "on-call home-birth fee / lactation consultant" reads as
+*examples* of extra charges, not a full covered/not-covered account of the second half of the
+question. Keeping it means one case stays a fail that arguably shouldn't — the safe direction to
+err when relabelling against your own run. (Companion to the Phase-8 journal lesson: fixing the
+ruler is not tuning, *provided* you fix it in the conservative direction.)

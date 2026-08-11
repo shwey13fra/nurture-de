@@ -447,15 +447,20 @@ defect:
    answers. These are golden-label errors to fix by human judgment, not system failures.
 3. **Cross-lingual RETRIEVAL gap for English questions on German-only topics (the real system
    finding).** recall@5 **0.94 corpus-derived (German) vs 0.30 lived-experience (English)**.
-   English employment/Mutterschutz queries (L24/L26/L28/L29/L30/g007, all recall 0.0) retrieve
+   English employment/Mutterschutz queries (L24/L28/L29/L30/g007) retrieve
    the English TK/gesund sources and never reach the German `fam_mutterschutz` that holds the
    Beschäftigungsverbot content — so the system honestly says "I don't have this" when it
-   does. This complicates Policy A: cross-lingual *answering* works once the source is
+   does. *(Correction, post-eval: L26 was mis-grouped here — it is recall 0.5, not 0.0.
+   `fam_mutterschutz` was at doc rank 4, inside recall@5; only its second expected source
+   `fam_elternzeit` (rank 6) missed. One of the six "failures" was a reading error on my part —
+   see the P8 post-eval entry below.)* This complicates Policy A: cross-lingual *answering* works once the source is
    retrieved, but cross-lingual *retrieval* fails for DE-only topics. (Phase-4's 0.86 was on
    *parallel translated* content; DE-only content with no EN twin is the harder case.)
 
 **Other results:** reranker gave a small recall bump (0.75 vs dense 0.73, hybrid 0.69 — hybrid
-was worst; all close on 26 cases). **Prompt injection defeated on all configs, both shapes**
+was worst; all close on 26 cases). **[SUPERSEDED — see "Retraction" below: this row measured a
+reranker fed only 10 candidates, not the reranker's actual value. The number stands as recorded;
+the *interpretation* "reranking barely helps on this corpus" was invalid.]** **Prompt injection defeated on all configs, both shapes**
 (g008 direct + g009 indirect), judged not keyword-matched — clean win. **Citation validity
 100%** (spot-check for judge leniency). **Spot-check L16/L21 config-invariant** — the trim
 assumption holds. **Mild safety note:** medical questions (L12/L14/L36/L37) came back
@@ -472,6 +477,45 @@ my model of the system was wrong — I over-trusted cross-lingual retrieval for 
 Per the reviewer, **nothing was tuned on these results** — first honest numbers recorded before
 any change. Fixes implied (prompt rules 3/5, relabel over-strict out_of_corpus, investigate
 cross-lingual retrieval) are decisions to take next, not taken here.
+
+### Retraction — the hybrid_rerank row measured a starved reranker, not a weak one
+
+I reported that reranking added almost nothing (recall 0.75 vs hybrid 0.69, "all close"). **That
+reading was wrong — and not because the reranker is good, but because the harness fed it a
+10-candidate pool while the correct chunks sat at fused ranks 20-27.** `retrieve_for_config`
+did `search(k=10)` and reranked those 10; on the cross-lingual cases the right German chunk was
+never in the 10, so the cross-encoder could not possibly have surfaced it. The measurement was
+invalid, not the component. A config comparison is only meaningful if each config is given a
+fair chance to work, and I hadn't checked that mine was. (The pool-probe that caught this:
+feeding the same reranker a 100-wide pool recovers 5 of the 6 cross-lingual cases into the top-4
+— see the "P8 post-eval" entry below. The reranker was fine all along.)
+
+**Reusable lesson:** before concluding "component X doesn't help," verify X was actually
+exercised. A no-op result and a starved-input result are indistinguishable in the output number
+and opposite in meaning. The number (0.75) stands as recorded; the *interpretation* is retracted.
+
+**Why the fix pool is 100, not 50 (measured, not chosen):** case L30's correct chunk sits at
+fused rank ~43; a 50-wide rerank pool leaves it at reranked rank 4 — one short of K_CONTEXT=4,
+so it never reaches the model — while a 100-wide pool pulls it to rank 0. 50 recovers 4 of the
+6 cases; 100 recovers 5. `retrieval.RERANK_POOL = 100` carries this rationale inline.
+
+### Phase-13 note — rerank latency is the real cost of the 100-pool (CPU, measured)
+
+Cross-encoder rerank wall-clock on this CPU box (`bge-reranker-v2-m3`, median of 7 trials):
+
+| pool | median | multiplier |
+|---|---|---|
+| 20 | 29.4 s | 1.0× |
+| 50 | 70.2 s | 2.4× |
+| 100 | **117.8 s** | **4.0×** |
+
+Roughly linear in pool size (~1.2 s/candidate on CPU). The 100-pool costs **~2 minutes per query**
+on CPU — not viable for an interactive request path as-is. This is the concrete argument for the
+`Reranker` swap-target already noted in `retrieval.py`: a **GPU or hosted reranker endpoint** is
+required in production, or the pool must be cut back for latency (accepting L30-class misses). The
+dollar cost of the wider pool is zero (local model); the cost is entirely latency, and it belongs
+in the production/Phase-13 tradeoff, not hidden. It also lengthens the eval itself: 43 cases ×
+~118 s rerank ≈ 85 minutes of rerank compute alone, so the re-run is time-bound, not budget-bound.
 
 ### Post-run relabel — a third of my "unanswerable" labels were wrong (pessimism, caught by measurement)
 
@@ -713,3 +757,110 @@ this corpus is *rank rescue of exact/edge matches*, and that is the claim to mak
 loud — because it's the one the data supports. (Same discipline as P7's falsified
 tokenizer prediction: a wrong prediction caught by measurement beats an untested right
 one.)
+
+### P8 post-eval — "retrieval failed" was two different failures; found by hand, not by the score
+
+**Found by manual use, not by the eval.** Running `ask.py` on the English query *"When do I
+have to tell my employer I'm pregnant?"* — one of the cross-lingual cases the eval reported as
+`recall@5 = 0.0` — showed the correct German document (`fam_mutterschutz`) was **retrieved**,
+its exact-answer chunk `…__96836e25` ("Wann muss ich meinen Arbeitgeber über meine
+Schwangerschaft informieren?") sitting at fused **chunk rank 6** while the top-4 window handed
+generation four English TK chunks. The system answered "I don't have that information" while
+holding the answer. The aggregate metric said *not found*; the trace said *found and discarded*.
+Two different problems with two different fixes, and the mean recall couldn't tell them apart.
+
+**Probe (local models only, no API spend — `scratchpad/pool_probe.py` + `pool20_raw.py`).**
+Raw ranks at the production pool (`POOL=20`) and cross-encoder rerank of a 50- and 100-wide
+candidate pool, for the six English→German failing cases:
+
+| case | correct doc | raw DOC rank @20 | in recall@5 | raw CHUNK rank | rerank-50 → top-4 | rerank-100 → top-4 |
+|------|-------------|------------------|-------------|----------------|-------------------|--------------------|
+| manual | fam_mutterschutz | 3 | yes | 6 | rank 0 ✓ | rank 0 ✓ |
+| L24 | fam_mutterschutz | 5 | no | 7 | rank 0 ✓ | rank 0 ✓ |
+| L26 | fam_mutterschutz / fam_elternzeit | 4 / 6 | 0.5 (not 0.0) | 9 | rank 1 ✓ | rank 1 ✓ |
+| L28 | fam_mutterschutz | 5 | no | 20 | rank 0 ✓ | rank 0 ✓ |
+| L29 | fam_mutterschutz | 5 | no | 27 | rank 0 ✓ | rank 0 ✓ |
+| L30 | fam_mutterschutz | absent from 28-deep pool | no | absent | rank 4 ✗ | rank 0 ✓ |
+| g007 | tk_maternity_pay_apply | absent | no | absent (rank 73 @POOL=150) | not in pool | rank 70 ✗ |
+
+**It is a ranking problem, and the fix is a pool-size parameter — with one real caveat.** The
+embedding space *found* every German chunk; it lost the ordering to topically-adjacent English
+content on a thin RRF spread. A cross-encoder rerank of a **100-wide** pool pulls the exact
+German chunk to rank 0–1 and into the top-4 that reaches the model for **5 of the 6** cases —
+zero representation changes, no re-embedding. A **50**-wide pool is not enough: L30's chunk
+lands at rank 4, one short of the cut. So the size that matters is ~100, not 50.
+
+**Why the eval's own `hybrid_rerank` config already had a reranker and still scored these
+0.0:** `retrieve_for_config` reranks `search(k=10)` — it feeds the cross-encoder only the top-10
+fused chunks. For L28/L29/L30 the correct chunk sits at fused chunk rank 20 / 27 / beyond-the-
+pool, so the reranker never sees it. The reranker was never the weak link; **the pool handed to
+it was**. The parameter to change is the rerank pool width (10 → ~100), which means raising
+`Retriever.POOL` and returning `k ≥ 100` on the rerank path, then taking top-4.
+
+**Two premise corrections the probe surfaced:** (1) L26 is *not* `recall 0.0` on hybrid —
+`fam_mutterschutz` is doc rank 4 (inside recall@5); only its second expected source
+`fam_elternzeit` (rank 6) misses, so recall is 0.5. (2) **g007 is a different animal and must
+not be lumped in.** It is the *reverse* direction — a German query (`Wie beantrage ich
+Mutterschaftsgeld?`) whose gold is an *English* TK document — and the reranker scores the
+correct chunk low even in a 100-pool (stays rank 70). Pool-size does not touch it; it needs the
+Phase-3 cross-lingual work (or a gold-label review, since a German query about Mutterschaftsgeld
+arguably *should* be answered from a German source).
+
+**Reusable lesson:** an aggregate retrieval metric collapses "not retrieved" and "retrieved then
+discarded by the context window" into the same number, and they have opposite fixes
+(representation vs. ranking/window). Read the per-query trace before designing anything — the
+cheapest fix (a pool-size parameter) was invisible at the mean and obvious in the trace.
+
+## Phase 8 — CLOSED (ruler brought back into sync; both numbers, stated as which)
+
+**The generalisable lesson — changing the system and the measuring instrument in the same
+cycle.** I relabelled the golden set and edited the prompt in the same Phase-8 pass. The relabel
+encoded the OLD prompt's hedging as expected behaviour; the prompt edit (Rule 5) then removed the
+hedging. Three cases "failed" for doing exactly what I'd just asked them to do. When you change
+the system and the measuring instrument together, some failures are the two disagreeing rather
+than the system being wrong — so before reading a failure as a defect, ask which of the two you
+moved. The fix here was to the ruler, not the system, and the discipline is to report that
+honestly rather than let a corrected number read as tuning.
+
+**The honest arc — two numbers, and which is which.**
+
+- **As measured (the system genuinely got better, baseline → Phase-8b, nothing tuned):**
+  behaviour **35% → 65%**, recall@5 **0.85 → 0.90**, **5 recovered, 0 regressions**. This is the
+  honest headline — the prompt edits + the RERANK_POOL=100 fix, scored against the labels as they
+  stood.
+- **After label correction (the ruler was also wrong, re-scored from the same records, no new
+  API — see `eval/rescore.py`):** behaviour **65% → 77%** (all 43), **58% → 69%** (answerable);
+  recall unchanged at **0.90**. Five records flipped FAIL→pass: L09, L15 (stale `answer_partial`
+  → `answer`), c06, c08 (optimistic `answer` → `answer_partial`), L12 (`refuse_medical` → `answer`).
+
+Reporting only the corrected number would look like tuning; reporting only the raw number would
+understate the system. Both, with the distinction stated, is the accurate version.
+
+**Composition of the failures (why the raw 65% understates).** Of the 15 Phase-8b failures, only
+**three** were prompt calibration (the implied-but-unasked gap coda: h2, L28, L39). The rest were
+label lag (L09/L15 stale hedge labels), correct hedges the label mis-scored (c06/c08 genuine
+coverage gaps), a from-birth mislabel (L12), or documented corpus/retrieval limits (L20/L26/g007).
+Correcting the ruler resolved the label-attributable five; what remains is documented limits, not
+open work.
+
+**Closed as documented findings, not work:**
+- **C — known calibration limit (h2, L28, L39).** Rule 5 partially suppresses a gap coda about
+  detail only *implicitly* asked for. Diminishing returns; a further Rule-5 tightening is a
+  reviewer call, not a blind tune on one run.
+- **D — retrieval-limited (L20, L26, g007).** g007 is the reverse DE→EN direction the P8 post-eval
+  entry already covers; pool size cannot fix it (needs Phase-3 cross-lingual work / gold review).
+- **E — no safety regression (L12).** The Rule 2 replacement preserved all three genuine medical
+  refusals (L14/L36/L37 still refuse cleanly; medical re-run `eval/last_run_phase8b_rule2.json`,
+  $0.15). L12 never refused at baseline either; it is a mixed question whose centre of gravity is
+  the administrative IGeL/coverage framework, and post-edit it correctly leads with the medical
+  redirect before answering. Relabelled to `answer` (see PM-6). Two new PM lessons: **PM-6**
+  (a question that *mentions* something medical ≠ a *medical* question) and **PM-7** (when
+  relabelling against your own results, err pessimistic — L21 kept as a fail on purpose).
+
+**Rule 2 change:** the two overlapping medical lines were merged — the weaker standalone line was
+removed and its warmth/brevity + "no partial information first" folded into the stronger
+centre-of-gravity block, so the strong version isn't diluted and nothing is lost. Three clean
+refusals preserved confirm it's safe.
+
+Phase 8 closed. Two PM-2 coverage gaps logged (`eval/coverage_gaps.md`: student maternity finance,
+civil-servant per-Bundesland Mutterschutz). Moving to Phase 9.

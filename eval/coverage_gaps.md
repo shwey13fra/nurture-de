@@ -32,6 +32,16 @@ An official page answers this; it's just not in the corpus yet. Candidate source
 | Ambulance coverage / when to use 112 — coverage part (5.8) | GKV / Land rescue-service info |
 | Register the birth, birth-certificate documents (part of 6.2) | Standesamt Frankfurt/Hessen (deeper than `fam_anmeldung`) |
 | U1/U2 logistics, newborn screening — non-clinical *when/where* (Q40 subs) | GKV / Kinderuntersuchungsheft info |
+| Student maternity financial support — Studentinnen *ohne Nebenerwerb* (c06, PM-2) | BMFSFJ Familienportal (Leistungen) / BAföG + Stiftungen |
+| Civil-servant per-Bundesland Mutterschutz detail — Schutzfristen/Leistungen/Verbote (c08, PM-2) | Land Mutterschutzverordnungen / Personalstelle guidance |
+
+**PM-2 note (c06, c08):** these two are a *different* kind of A-gap. Recall was **1.0** — the
+right federal page (`fam_mutterschutz`) *was* retrieved; it is a hub/overview stub that lacks the
+per-situation depth (student finance, per-Bundesland civil-servant rules). So the fix is fetching
+the *deeper* page, not finding a missing source. The system answered correctly with
+`answer_partial` (report the rule that applies, name the authority — Personalstelle / Familienportal);
+the golden `answer` label was optimistic about corpus depth and was corrected. Thin corpus, not a
+bad value (PM-2).
 
 **Note the constraint:** several of these are **Land/municipal** (Frankfurt/Hessen) or
 insurer-specific — exactly the pages that were 403'd or SPA-blocked in Phase 1
