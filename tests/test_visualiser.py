@@ -119,3 +119,20 @@ class TestHeroAndInject(unittest.TestCase):
     def test_inject_requires_placeholder(self):
         with self.assertRaises(ValueError):
             inject("<html></html>", {"a": 1})
+
+
+_VIZ = _ROOT / "docs" / "visualiser"
+
+class TestTemplateGuards(unittest.TestCase):
+    FORBIDDEN = ["0.75", "0.85", "0.90", "0.9 ", "38%", "58%", "65%", "69%", "77%", "86%"]
+
+    def test_template_exists_and_has_placeholder(self):
+        tpl = (_VIZ / "template.html").read_text(encoding="utf-8")
+        self.assertIn('id="traces"', tpl)
+        self.assertIn("/*__TRACES__*/", tpl)
+
+    def test_template_has_no_hand_typed_metric_numbers(self):
+        tpl = (_VIZ / "template.html").read_text(encoding="utf-8")
+        # strip the (empty) traces block defensively, then scan
+        hits = [n for n in self.FORBIDDEN if n in tpl]
+        self.assertEqual(hits, [], f"metric literals hand-typed in template: {hits}")

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NurtureDE Pipeline</title>
+<style>
+  :root{ --bg:#f7f7f5; --fg:#1c1c1a; --muted:#6b6b66; --line:#e0e0da; --card:#ffffff;
+         --de:#2f6f4f; --en:#8a5a2b; --accent:#b4322a; --ok:#2f6f4f; --bar:#3a3a36; }
+  :root:not([data-theme="light"]){ }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+         --bg:#17171a; --fg:#ececea; --muted:#9a9a94; --line:#2c2c30; --card:#1f1f23;
+         --de:#7fc8a0; --en:#d6a86b; --accent:#e8756c; --ok:#7fc8a0; --bar:#c8c8c2; } }
+  :root[data-theme="dark"]{ --bg:#17171a; --fg:#ececea; --muted:#9a9a94; --line:#2c2c30;
+         --card:#1f1f23; --de:#7fc8a0; --en:#d6a86b; --accent:#e8756c; --ok:#7fc8a0; --bar:#c8c8c2; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; }
+  body{ background:var(--bg); color:var(--fg); font:15px/1.45 ui-sans-serif,system-ui,
+        -apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap{ max-width:1360px; margin:0 auto; padding:18px 22px; display:flex; flex-direction:column;
+         gap:14px; min-height:100vh; }
+  h1{ font-size:16px; font-weight:600; margin:0; letter-spacing:.2px; }
+  .head{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .btns{ display:flex; gap:6px; }
+  .btns button{ font:inherit; font-size:13px; padding:5px 11px; border:1px solid var(--line);
+        background:var(--card); color:var(--muted); border-radius:7px; cursor:pointer; }
+  .btns button[aria-pressed="true"]{ color:var(--fg); border-color:var(--fg); font-weight:600; }
+  /* Band 1 — ribbon */
+  .ribbon{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:12px 14px;
+        border:1px solid var(--line); border-radius:10px; background:var(--card); }
+  .node{ font-size:12.5px; padding:4px 9px; border-radius:20px; border:1px solid var(--line);
+        color:var(--muted); white-space:nowrap; }
+  .node.on{ color:var(--fg); border-color:var(--fg); background:color-mix(in srgb,var(--fg) 6%,transparent); }
+  .node.term{ color:var(--accent); border-color:var(--accent); }
+  .sep{ color:var(--muted); font-size:12px; }
+  /* Band 2 — hero */
+  .hero{ flex:1; border:1px solid var(--line); border-radius:10px; background:var(--card);
+        padding:16px 18px; display:flex; flex-direction:column; gap:10px; min-height:0; }
+  .q{ font-size:17px; font-weight:600; }
+  .qmeta{ color:var(--muted); font-size:12.5px; }
+  .cols{ display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  .col h3{ font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted);
+        margin:0 0 6px; font-weight:600; }
+  .row{ display:flex; align-items:center; gap:8px; padding:3px 0; font-size:13.5px; }
+  .rk{ color:var(--muted); width:16px; text-align:right; font-variant-numeric:tabular-nums; }
+  .lang{ font-size:10.5px; font-weight:700; padding:1px 5px; border-radius:4px; }
+  .lang.de{ color:var(--de); border:1px solid var(--de); }
+  .lang.en{ color:var(--en); border:1px solid var(--en); }
+  .src{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; }
+  .cut{ border-top:1px dashed var(--line); color:var(--muted); font-size:11px; margin:5px 0;
+        padding-top:4px; }
+  .answer{ color:var(--accent); font-weight:600; }
+  .promoted .src{ color:var(--ok); font-weight:600; }
+  .caption{ font-size:13px; color:var(--fg); border-left:3px solid var(--accent);
+        padding-left:10px; }
+  .safety{ display:flex; flex-direction:column; gap:8px; justify-content:center; height:100%;
+        text-align:center; }
+  .safety .big{ font-size:20px; font-weight:600; }
+  /* Band 3 — strip */
+  .strip{ display:grid; grid-template-columns:1.3fr 1.4fr 1fr; gap:18px; border:1px solid var(--line);
+        border-radius:10px; background:var(--card); padding:12px 16px; font-size:12.5px; }
+  .lat{ display:flex; flex-direction:column; gap:5px; }
+  .latbar{ display:flex; height:12px; border-radius:6px; overflow:hidden; border:1px solid var(--line); }
+  .latbar span{ display:block; }
+  .latbar .r{ background:var(--bar); } .latbar .g{ background:var(--en); }
+  .latbar .j{ background:var(--muted); }
+  .metrics b{ font-variant-numeric:tabular-nums; }
+  .foot{ color:var(--muted); font-size:11px; text-align:right; }
+  .retryPanel{ display:none; }
+  .retryPanel.open{ display:block; }
+  a.toggle{ color:var(--muted); cursor:pointer; font-size:12px; text-decoration:underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>NurtureDE — how the system decides</h1>
+    <div class="btns" id="btns"></div>
+  </div>
+  <div class="ribbon" id="ribbon"></div>
+  <div class="hero" id="hero"></div>
+  <div class="strip" id="strip"></div>
+  <div class="foot" id="foot"></div>
+  <div class="retryPanel" id="retryPanel"></div>
+</div>
+<script id="traces" type="application/json">/*__TRACES__*/</script>
+<script>
+  const DATA = JSON.parse(document.getElementById("traces").textContent);
+  const ORDER = [["medical","Medical"],["missing","Missing"],["full","Full"],["retry","Retry"]];
+  const RIBBON = ["classify","profile","retrieve","grade","timeline","generate","verify"];
+  let current = "full";
+
+  function el(t, cls, txt){ const e=document.createElement(t); if(cls)e.className=cls;
+    if(txt!=null)e.textContent=txt; return e; }
+
+  function renderButtons(){
+    const b=document.getElementById("btns"); b.innerHTML="";
+    for(const [key,label] of ORDER){ const btn=el("button",null,label);
+      btn.setAttribute("aria-pressed", key===current); btn.onclick=()=>{current=key; renderAll();};
+      b.appendChild(btn); }
+  }
+  function renderRibbon(){
+    const r=document.getElementById("ribbon"); r.innerHTML="";
+    const path=(DATA.scenarios[current].path||[]).join(" ");
+    RIBBON.forEach((name,i)=>{ if(i)r.appendChild(el("span","sep","→"));
+      const on = path.includes(name==="profile"?"check_profile":name);
+      const nd=el("span","node "+(on?"on":""), name); r.appendChild(nd); });
+    const fn=DATA.scenarios[current].final_node||"";
+    if(fn==="safe_referral"||fn==="request_attributes"){
+      r.appendChild(el("span","sep","→")); r.appendChild(el("span","node term",fn+" ⊗")); }
+  }
+  function langChip(l){ const c=el("span","lang "+(l==="de"?"de":"en"), (l||"?").toUpperCase()); return c; }
+  function renderHero(){
+    const h=document.getElementById("hero"); h.innerHTML="";
+    const sc=DATA.scenarios[current];
+    if(sc.terminated_after){                       // medical / missing: safety swap
+      const s=el("div","safety");
+      s.appendChild(el("div","big","Terminated after "+sc.terminated_after+" nodes"));
+      s.appendChild(el("div","qmeta", current==="medical"
+        ? "No retrieval, no model answer — it refused to assess a medical question and referred to a doctor / 112."
+        : "It asked for the missing attribute instead of guessing an answer that depends on it."));
+      h.appendChild(s); return;
+    }
+    const H=DATA.hero;
+    h.appendChild(el("div","q","“"+H.query+"”"));
+    h.appendChild(el("div","qmeta","English question → German answer"));
+    const cols=el("div","cols");
+    const mk=(title, side, promoted)=>{ const c=el("div","col"); c.appendChild(el("h3",null,title));
+      side.items.forEach(it=>{
+        if(side.cutoff && it.rank===side.cutoff) c.appendChild(el("div","cut","top-4 cutoff"));
+        const row=el("div","row"+(promoted&&it.rank===0?" promoted":""));
+        row.appendChild(el("span","rk",it.rank));
+        row.appendChild(langChip(it.language));
+        const isAns = it.source_id===H.answer_source_id;
+        const src=el("span","src"+(isAns&&!promoted&&it.rank>=side.cutoff?" answer":""), it.source_id);
+        row.appendChild(src);
+        if(isAns && promoted && it.rank===0) row.appendChild(el("span","answer"," ◀ ANSWER"));
+        if(isAns && !promoted && it.rank>=side.cutoff) row.appendChild(el("span","answer"," ◀ discarded"));
+        c.appendChild(row); });
+      return c; };
+    cols.appendChild(mk("Before — pool 20, top-4", H.before, false));
+    cols.appendChild(mk("After — pool 100 + rerank", H.after, true));
+    h.appendChild(cols);
+    h.appendChild(el("div","caption", H.caption));
+  }
+  function renderStrip(){
+    const s=document.getElementById("strip"); s.innerHTML="";
+    const sc=DATA.scenarios[current], m=DATA.metrics;
+    // latency (per scenario)
+    const lat=el("div","lat"); lat.appendChild(el("div","qmeta","Latency (this path)"));
+    const tot=(sc.node_timings||[]).reduce((a,t)=>a+t.ms,0)||1;
+    const gen=(sc.node_timings||[]).filter(t=>t.node==="generate_structured_plan").reduce((a,t)=>a+t.ms,0);
+    const ret=(sc.node_timings||[]).filter(t=>t.node==="retrieve").reduce((a,t)=>a+t.ms,0);
+    const bar=el("div","latbar");
+    const seg=(cls,ms)=>{ const x=el("span",cls); x.style.width=(100*ms/tot)+"%"; return x; };
+    bar.appendChild(seg("r",ret)); bar.appendChild(seg("g",gen)); bar.appendChild(seg("j",tot-ret-gen));
+    lat.appendChild(bar);
+    lat.appendChild(el("div","qmeta", ret? ("retrieval "+Math.round(100*ret/tot)+"% · gen "+Math.round(100*gen/tot)+"%") : (Math.round(tot)+" ms — no retrieval")));
+    s.appendChild(lat);
+    // answer + citations (per scenario)
+    const ans=el("div"); ans.appendChild(el("div","qmeta","Answer"));
+    if(sc.answer){ ans.appendChild(el("div",null,(sc.answer.summary||"").slice(0,150)+"…"));
+      ans.appendChild(el("div","src",(sc.answer.citations||[]).map(c=>c.split("__")[0]).join(", "))); }
+    else ans.appendChild(el("div","qmeta","—"));
+    s.appendChild(ans);
+    // metrics (system-level, constant)
+    const met=el("div","metrics"); met.appendChild(el("div","qmeta","System (eval)"));
+    met.appendChild(el("div",null)).innerHTML =
+      "recall@5 <b>"+m.recall.before+" → "+m.recall.after+"</b>";
+    met.appendChild(el("div",null)).innerHTML =
+      "behaviour <b>"+m.behaviour_measured.before+"% → "+m.behaviour_measured.after+"%</b> measured";
+    met.appendChild(el("div",null)).innerHTML =
+      "<b>"+m.behaviour_labels_fixed.before+"% → "+m.behaviour_labels_fixed.after+"%</b> labels fixed";
+    const tg=el("a","toggle","⌄ retry detail");
+    tg.onclick=()=>document.getElementById("retryPanel").classList.toggle("open");
+    met.appendChild(tg);
+    s.appendChild(met);
+  }
+  function renderFoot(){
+    document.getElementById("foot").textContent =
+      "sources: "+DATA.metrics.recall.source+" · generated "+(DATA.generated_at||"")+" · "+(DATA.commit||"");
+  }
+  function renderRetry(){
+    const p=document.getElementById("retryPanel"); p.innerHTML="";
+    const rt=DATA.scenarios.retry; if(!rt||!rt.retrievals) return;
+    p.appendChild(el("h3",null,"Retry loop — 3 attempts (bounded, hard cap 2)"));
+    rt.retrievals.forEach((r,i)=>{ const d=el("div");
+      d.innerHTML="<b>attempt "+(i+1)+"</b>: "+(r.final_context||[]).map(c=>c.split("__")[0]).join(", ");
+      p.appendChild(d); });
+  }
+  function renderAll(){ renderButtons(); renderRibbon(); renderHero(); renderStrip();
+    renderFoot(); renderRetry(); }
+  renderAll();
+</script>
+</body>
+</html>
