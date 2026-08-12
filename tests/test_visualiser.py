@@ -76,3 +76,46 @@ class TestEvalFigures(unittest.TestCase):
         self.assertEqual(s["cross_lingual_recovery"]["of"], 6)
         for k in ("recall", "behaviour_measured", "behaviour_labels_fixed"):
             self.assertIn("source", s[k])        # every figure names its file
+
+
+from tools.visualiser_serialize import assemble_hero, inject           # noqa: E402
+
+class TestHeroAndInject(unittest.TestCase):
+    def _c(self, cid, sid, lang, score):
+        return RetrievedChunk(cid, "t", score, {"source_id": sid, "language": lang})
+
+    def test_assemble_hero_finds_discard_and_recovery(self):
+        before = RetrievalTrace(query="q", mode="hybrid")
+        before.fused = [{"chunk_id": "tk__0"}, {"chunk_id": "tk__1"}, {"chunk_id": "tk__2"},
+                        {"chunk_id": "tk__3"}, {"chunk_id": "x__4"}, {"chunk_id": "x__5"},
+                        {"chunk_id": "fam__ans"}]                       # answer at rank 6
+        before._chunks = {"tk__0": self._c("tk__0", "tk_maternity_pay", "en", .9),
+                          "tk__1": self._c("tk__1", "tk_maternity_pay", "en", .8),
+                          "tk__2": self._c("tk__2", "tk_maternity_benefits", "en", .7),
+                          "tk__3": self._c("tk__3", "tk_maternity_pay", "en", .6),
+                          "fam__ans": self._c("fam__ans", "fam_mutterschutz", "de", .5)}
+        after = [self._c("fam__ans", "fam_mutterschutz", "de", .99),
+                 self._c("tk__0", "tk_maternity_pay", "en", .5)]
+        h = assemble_hero("q", before, after, "fam_mutterschutz", "cut by top-4")
+        self.assertEqual(h["before"]["answer_rank"], 6)
+        self.assertEqual(h["after"]["answer_rank"], 0)
+        self.assertEqual(h["before"]["cutoff"], 4)
+        self.assertEqual(h["after"]["items"][0]["source_id"], "fam_mutterschutz")
+
+    def test_assemble_hero_rejects_non_reproducing_case(self):
+        before = RetrievalTrace(query="q", mode="hybrid")
+        before.fused = [{"chunk_id": "fam__ans"}]                       # answer already at rank 0
+        before._chunks = {"fam__ans": self._c("fam__ans", "fam_mutterschutz", "de", .9)}
+        after = [self._c("fam__ans", "fam_mutterschutz", "de", .9)]
+        with self.assertRaises(ValueError):
+            assemble_hero("q", before, after, "fam_mutterschutz", "c")
+
+    def test_inject_replaces_placeholder(self):
+        tpl = '<script id="traces" type="application/json">/*__TRACES__*/</script>'
+        out = inject(tpl, {"a": 1})
+        self.assertIn('{"a": 1}', out)
+        self.assertNotIn("/*__TRACES__*/", out)
+
+    def test_inject_requires_placeholder(self):
+        with self.assertRaises(ValueError):
+            inject("<html></html>", {"a": 1})

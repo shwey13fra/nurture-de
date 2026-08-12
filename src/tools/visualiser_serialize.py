@@ -68,3 +68,41 @@ def strip_metrics() -> dict:
         "cross_lingual_recovery": {"recovered": 5, "of": 6,
                                    "source": "BUILD_JOURNAL.md pool-probe (P8 retraction)"},
     }
+
+
+_PLACEHOLDER = "/*__TRACES__*/"
+
+
+def _rank_of_source(items_source_ids: list[str], source_id: str) -> int:
+    for i, sid in enumerate(items_source_ids):
+        if sid == source_id:
+            return i
+    return -1
+
+
+def assemble_hero(query: str, before_rt, after_chunks, answer_source_id: str, caption: str) -> dict:
+    # `before_rt._chunks` maps chunk_id -> RetrievedChunk (attached by the generator so this stays
+    # pure). Build a ranked, display-only view; find the answer by source_id (chunk suffix varies).
+    def item(rank, cid):
+        c = before_rt._chunks.get(cid)
+        base = chunk_summary(c) if c else {"chunk_id": cid, "source_id": "", "language": "",
+                                           "authority": "", "last_verified": "", "score": 0.0}
+        return {"rank": rank, **base}
+    before_items = [item(i, f["chunk_id"]) for i, f in enumerate(before_rt.fused)]
+    before_rank = _rank_of_source([it["source_id"] for it in before_items], answer_source_id)
+    after_items = [{"rank": i, **chunk_summary(c)} for i, c in enumerate(after_chunks)]
+    after_rank = _rank_of_source([it["source_id"] for it in after_items], answer_source_id)
+    if not (before_rank > 3 and after_rank == 0):
+        raise ValueError(f"hero invariant failed: before_rank={before_rank} (want >3), "
+                         f"after_rank={after_rank} (want 0) for {answer_source_id!r}")
+    return {"query": query, "answer_source_id": answer_source_id, "caption": caption,
+            "before": {"pool": 20, "cutoff": 4, "answer_rank": before_rank,
+                       "items": before_items[:max(before_rank + 1, 4)]},
+            "after": {"pool": 100, "reranked": True, "answer_rank": after_rank,
+                      "items": after_items[:4]}}
+
+
+def inject(template: str, traces: dict) -> str:
+    if _PLACEHOLDER not in template:
+        raise ValueError("template is missing the /*__TRACES__*/ placeholder")
+    return template.replace(_PLACEHOLDER, json.dumps(traces, ensure_ascii=False))
