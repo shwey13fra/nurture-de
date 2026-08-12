@@ -136,3 +136,21 @@ class TestTemplateGuards(unittest.TestCase):
         # strip the (empty) traces block defensively, then scan
         hits = [n for n in self.FORBIDDEN if n in tpl]
         self.assertEqual(hits, [], f"metric literals hand-typed in template: {hits}")
+
+
+import json as _json
+from tools.visualiser_serialize import inject   # already imported above; safe
+
+class TestWriteOutputs(unittest.TestCase):
+    def test_reuse_injects_existing_traces_into_index(self):
+        from tools.build_visualiser_traces import write_outputs
+        traces = {"scenarios": {"medical": {"path": ["classify_intent","safe_referral"],
+                  "final_node": "safe_referral", "terminated_after": 2, "node_timings": [],
+                  "answer": None}}, "hero": {}, "metrics": {"recall": {"source": "x"}},
+                  "generated_at": "2026-08-12", "commit": "deadbeef"}
+        write_outputs(traces)                       # writes docs/visualiser/{traces.json,index.html}
+        idx = (_ROOT/"docs"/"visualiser"/"index.html").read_text(encoding="utf-8")
+        self.assertNotIn("/*__TRACES__*/", idx)     # placeholder consumed
+        self.assertIn("deadbeef", idx)              # data embedded
+        on_disk = _json.loads((_ROOT/"docs"/"visualiser"/"traces.json").read_text(encoding="utf-8"))
+        self.assertEqual(on_disk["commit"], "deadbeef")
