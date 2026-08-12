@@ -173,3 +173,42 @@ check, and the recorded answer's "on-call home-birth fee / lactation consultant"
 question. Keeping it means one case stays a fail that arguably shouldn't — the safe direction to
 err when relabelling against your own run. (Companion to the Phase-8 journal lesson: fixing the
 ruler is not tuning, *provided* you fix it in the conservative direction.)
+
+---
+
+## PM-8 — Good abstention behaviour conceals upstream defects
+
+**Rule:** A system that refuses gracefully when retrieval fails is *harder* to debug than one that
+produces garbage, because the failure mode looks like correct behaviour. When a well-behaved
+system returns an honest partial, a truthful "I don't have that," or a clean-looking metric, do
+**not** read that as evidence the pipeline is healthy — the polite surface can be sitting on top of
+a retrieval bug that starved the good answer. Trust the **per-stage trace**, never the final
+output, to tell you the pipeline worked. And where a stage can silently empty its own input
+(a pre-filter, a too-narrow rerank pool, a vocabulary mismatch), make that condition **fail loudly**
+— a startup assertion or a zero-result warning — so the defect can't hide behind good manners.
+
+**Incident A (2026-08-08, Phase 8):** the eval reported "reranking barely helps on this corpus"
+(recall 0.75, all three configs close) — a clean, plausible, *publishable-looking* finding. It was
+wrong. The harness fed the cross-encoder a 10-candidate pool while the correct cross-lingual chunks
+sat at fused ranks 20–43, so they were discarded **before** the reranker ever scored them. The
+benign metric masked a starved reranker. Only a pool-probe (feed the same reranker 100 candidates →
+5 of 6 cases recover into the top-4) revealed the reranker was fine all along. `RERANK_POOL=100`.
+
+**Incident B (2026-08-11, Phase 11):** scenario 1 returned correct deterministic dates, a truthful
+partial, and an honest "ask your Personalstelle." It **looked** like a coverage gap. It was a bug:
+`_filters_from` mapped `employment_status="employed"` to a `user_type="employed"` filter, but the
+corpus tags that facet `employee`, and maternity-protection chunks carry no `any` passthrough — so
+the filter silently excluded every relevant chunk. The graceful degradation hid it; only the
+per-node trace (`grade_evidence` reporting insufficient, the canonical chunk absent from the
+reranked top-4) revealed it.
+
+**The guard (now code, not just a lesson):** `assert_filter_vocab()` runs at graph build and raises
+if any filter value the mapping tables can emit matches **zero** chunks in the corpus — it catches
+both the `employed` orphan and a latent second one (`family-insured`, which the corpus never tags;
+now mapped to `statutory`, its real GKV category). The `retrieve` node additionally warns loudly if
+a *filtered* search returns zero chunks at request time — at this corpus size that is almost always
+a vocabulary mismatch, not genuine absence. Twice the honest answer masked a retrieval bug; the
+third time the pipeline will shout.
+
+**Test before trusting a graceful degradation:** "Is this an honest *no evidence*, or an honest
+answer sitting on top of a stage that quietly returned nothing?" Read the trace to tell them apart.

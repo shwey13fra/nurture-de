@@ -1055,3 +1055,61 @@ question it shows the same thing a screenshot would, at node granularity.
 **Scope held.** Exactly the ten nodes specified; three "wants another node" temptations
 (translate, freshness, parallel retrieval) are logged as roadmap items in the decision doc, not
 added. Next: Phase 12 (the visualiser) renders `GraphTrace`.
+
+### Phase 11 addendum — instrument, measure, report (2026-08-12)
+
+Per-node wall-clock timing was **specced but not delivered** in the first Phase-11 pass. Added it
+(zero coupling: a `_timed` wrapper in `build_graph` records ms onto `GraphTrace.node_timings`; node
+bodies untouched) and ran the four scenarios **warm** (E5 + cross-encoder + HTTP client primed on a
+discarded run first, so model-load is out of the numbers). Measured on the local CPU dev box; the
+absolute retrieve seconds carry high variance under load, but the *structure* is unambiguous.
+
+| path | total | retrieve | generation | gen % | other (judges) | cost |
+|---|--:|--:|--:|--:|--:|--:|
+| medical refusal (1 call) | 1.75 s | — | — | — | classify 1.75 s | $0.003 |
+| missing attributes (2 calls) | 3.19 s | — | — | — | classify+profile 3.19 s | $0.008 |
+| full answer, 0 retries | **191 s** | **165 s (86%)** | 19 s | **10%** | 5 judge calls ≈ 7.5 s | $0.081 |
+| full answer, 2 retries | **356 s** | **316 s (88%)** ×3 | 17 s | **5%** | 8 judge calls ≈ 18 s | $0.134 |
+
+**The estimate was inverted, which is the interesting outcome.** Reviewer's estimate: generation
+60–80 % of latency, retrieval + reranking ≈ 2 s combined. Reality on this box: **retrieval is
+86–88 %, generation only 5–10 %, and a single retrieve is 100–165 s — not 2 s but ~50–80× that.**
+The entire cost is the **`bge-reranker-v2-m3` cross-encoder scoring the 100-candidate pool on CPU**
+(100 XLM-R-large forward passes, no GPU). Dense embed + BM25 + RRF + filter are together a few ms;
+`RERANK_POOL=100` on CPU is the whole latency. The judge (Haiku) calls are a steady ~1.5–2.5 s each;
+generation (Opus) is a real 17–19 s but dwarfed. **The reviewer's 2-second figure is right for the
+*production topology* — the hosted reranker endpoint already named as the swap target in
+`retrieval.py` collapses this to sub-second — so generation would indeed dominate in prod. But that
+is now a *measured* claim with a named lever: `RERANK_POOL` is the single biggest latency knob, and
+CPU reranking is a dev-box artefact, not the shipped cost.** (Cross-check: Phase-8 already recorded
+the cross-encoder wall-clock on this box; this is the same cost, now seen end-to-end.)
+
+**The retry loop is not a no-op — it retrieves genuinely different chunks — but it could not recover
+a real gap.** Scenario 4's three attempts (chunk_ids, reranked top-4):
+
+- attempt 1 (original EN query): `…Beamtinn__eb325d8b`, `…antrag__49e736fe`, `…faq__93d50023`, `…vorsorge_en__e5e1b986`
+- attempt 2 (German-term rewrite): `…eb325d8b`, `…49e736fe`, **`…faq__6a740a69`**, `…93d50023`
+- attempt 3 (broader rewrite): `…eb325d8b`, **`…staatliche_leistungen__a9bb8567`**, `…93d50023`, `…49e736fe`
+
+The one true Beamtinnen maternity-protection chunk (`eb325d8b`) is the corpus's only such chunk, so
+it pins to rank 0 every attempt. But ~1 of 4 slots **churned each round** — attempt 2 pulled a
+different Elterngeld-FAQ chunk, attempt 3 surfaced `fam_staatliche_leistungen`. So the rewrite
+*does* change retrieval; it is not decoration. `grade_evidence` nonetheless returned insufficient
+all three times, correctly — the genuine gap (Bavaria-specific *Landesbeamten* Mutterschutz rules)
+is **not in the corpus at all**, and no rewrite can manufacture absent information. Right behaviour:
+it explored, couldn't fabricate, hit the cap, and degraded honestly. Cost of the loop = 2 × (rewrite
+~3.5 s + retrieve ~100 s CPU-rerank + grade ~2 s) ≈ 210 s **on this box** / ≈ 4–5 s each in prod.
+The loop's economics are entirely a function of retrieval cost — cheap reranker → cheap loop.
+
+**`verify_citations` earns its cost — and it does *not* always pass.** Only 2 of the 4 scenarios
+reach it (medical + missing-attrs terminate earlier). Of those two: the clean full answer verified
+with **0 issues**; the retry case verified **False with 2 flagged issues**, both substantive. It
+caught the model claiming the Elterngeld application "asks Beamtinnen for" certificates (the source
+merely *lists* them as required documents) and — the important one — the model flattening
+"*angerechnet*" into "**offset against** Elterngeld," where the source's actual rule is *you receive
+the higher of the two, or the difference*. In a benefits domain that nuance changes what a user
+expects to be paid. So contra the Phase-8 "~100 % citation validity" worry, the verifier is not a
+2–3 s check that always passes: it flagged **1 of the 2 cases that reached it**, at ~1.6 s clean /
+~6 s when there are issues — the cheapest node in the graph and the one that catches citation
+over-claim. **Keep it.** (Harness + raw JSON kept out of the repo — throwaway; numbers recorded
+here, which is the artefact that matters.)

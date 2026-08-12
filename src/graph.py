@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import operator
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated, Any, Optional, TypedDict
@@ -90,12 +91,14 @@ class GraphState(TypedDict, total=False):
 # --- trace (EXTENDS the Phase-5 RetrievalTrace by embedding it, not paralleling it) ----------
 @dataclass
 class GraphTrace:
-    nodes: list[dict] = field(default_factory=list)      # [{node, branch?, detail?}]
+    nodes: list[dict] = field(default_factory=list)      # [{node, branch?, detail?, ms?}]
     branch_intent: Optional[str] = None
     branch_profile: Optional[str] = None
     retries: int = 0
     retrievals: list[RetrievalTrace] = field(default_factory=list)   # one per retrieve attempt
     final_node: Optional[str] = None
+    filter_starved: bool = False                         # a filtered search returned zero chunks
+    node_timings: list[dict] = field(default_factory=list)   # [{node, ms}] in call order (Phase-11 instr.)
 
     def visit(self, node: str, **detail) -> None:
         self.nodes.append({"node": node, **detail})
@@ -238,21 +241,95 @@ _USER_TYPE = {"employed": "employee", "marginally-employed": "employee",
               "self-employed": "self-employed", "student": "student",
               "civil-servant": "civil-servant"}   # not-employed -> no user_type filter
 
+# insurance_type: same lesson. check_profile_completeness can emit 'family-insured', but the corpus
+# has no such facet value (its insurance_type vocab is any/statutory/non-statutory/private/none).
+# Familienversicherung IS statutory cover (GKV, insured via a family member) — so it maps to
+# 'statutory', not through. A naive pass-through of 'family-insured' would match nothing specific
+# and silently drop every statutory/private chunk behind the `any` passthrough — the SAME bug the
+# guard below now catches at startup. Map explicitly; unmapped -> no insurance filter.
+_INSURANCE = {"statutory": "statutory", "private": "private", "family-insured": "statutory"}
+
 
 def _filters_from(profile: dict) -> dict:
     f = {}
     ut = profile.get("user_type") or _USER_TYPE.get(profile.get("employment_status"))
     if ut:
         f["user_type"] = ut
-    if profile.get("insurance_type"):
-        f["insurance_type"] = profile["insurance_type"]
+    ins = _INSURANCE.get(profile.get("insurance_type"), profile.get("insurance_type"))
+    if profile.get("insurance_type") and ins:
+        f["insurance_type"] = ins
     return f
+
+
+# --- filter-vocabulary guard ----------------------------------------------------------------
+# Twice now (Phase 8 rank-6 discard, Phase 11 employed/employee) a filter value that matched
+# NOTHING in the corpus starved retrieval silently, and the graph's honest degradation hid it —
+# only the per-node trace revealed the bug. The lesson made durable: a filter value the code can
+# emit that matches no chunk is a defect, and it should fail LOUDLY, not silently. Two guards:
+#   1. assert_filter_vocab() — at build time, check every value the mapping tables can produce
+#      against the actual corpus vocabulary. A code-level orphan (like 'employed', or the latent
+#      'family-insured') raises here, caught by a developer / unit test, never a user.
+#   2. the retrieve node warns loudly if a *filtered* search returns zero chunks at request time.
+_CHUNKS_PATH = _ROOT / "data" / "chunks.jsonl"
+_FACET_VOCAB: Optional[dict[str, set]] = None
+
+
+def _corpus_facet_vocab(fields=("user_type", "insurance_type"),
+                        path: Path | None = None) -> dict[str, set]:
+    """The set of values each facet actually takes in the corpus (chunks.jsonl). Read once."""
+    global _FACET_VOCAB
+    if _FACET_VOCAB is not None and path is None:
+        return _FACET_VOCAB
+    vocab: dict[str, set] = {f: set() for f in fields}
+    with open(path or _CHUNKS_PATH, encoding="utf-8") as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            d = json.loads(line)
+            for f in fields:
+                if d.get(f) is not None:
+                    vocab[f].add(d[f])
+    if path is None:
+        _FACET_VOCAB = vocab
+    return vocab
+
+
+def assert_filter_vocab(path: Path | None = None) -> None:
+    """Fail fast if any filter value the code can emit matches nothing in the corpus.
+
+    `any` is the passthrough sentinel (ANY_PASSTHROUGH_FIELDS) — always eligible — so a mapped
+    value is valid iff it appears in the corpus for that facet. Raises ValueError listing every
+    orphan so the mismatch is fixed at startup, not discovered later as a silent recall hole."""
+    vocab = _corpus_facet_vocab(path=path)
+    emittable = {"user_type": set(_USER_TYPE.values()),
+                 "insurance_type": set(_INSURANCE.values())}
+    orphans = []
+    for facet, values in emittable.items():
+        corpus = vocab.get(facet, set())
+        for v in sorted(values):
+            if v not in corpus:
+                orphans.append(f"{facet}={v!r} matches no chunk "
+                               f"(corpus {facet} vocab: {sorted(corpus)})")
+    if orphans:
+        raise ValueError(
+            "filter vocabulary out of sync with the corpus — these values would silently "
+            "starve retrieval:\n  " + "\n  ".join(orphans))
 
 
 def retrieve(state: GraphState) -> dict:
     tr: GraphTrace = state["trace"]
-    chunks, rtr = _retrieve_reranked(state["query"], _filters_from(state.get("profile") or {}))
+    filters = _filters_from(state.get("profile") or {})
+    chunks, rtr = _retrieve_reranked(state["query"], filters)
     tr.retrievals.append(rtr)
+    # A FILTERED search that returns zero chunks is — at this corpus size — almost always a
+    # vocabulary mismatch, not a genuine absence. Warn loudly rather than let it look like a
+    # graceful "no evidence" (the failure mode that hid the Phase-11 bug). The startup
+    # assert_filter_vocab() catches code-level orphans; this catches request-time starvation.
+    if filters and not chunks:
+        tr.filter_starved = True
+        print(f"[retrieve] WARNING: filtered search returned 0 chunks for filters={filters} "
+              f"query={state['query']!r} — likely a vocabulary mismatch, not genuine absence.",
+              file=sys.stderr)
     tr.visit("retrieve", detail=f"{len(chunks)} chunks (attempt {len(tr.retrievals)})")
     return {"chunks": chunks, "path": ["retrieve"]}
 
@@ -408,19 +485,38 @@ def _route_evidence(state: GraphState) -> str:
     return "sufficient"
 
 
+# --- per-node wall-clock instrumentation (Phase-11 spec) ------------------------------------
+# Wraps each node to record its wall-clock ms on the trace. Measures the WHOLE node (model call
+# included), which is what user-perceived latency is made of. Zero coupling to node bodies: nodes
+# stay pure state->dict functions; the wrapper only reads state["trace"] and appends a timing.
+def _timed(name: str, fn):
+    def wrapped(state: GraphState) -> dict:
+        t0 = time.perf_counter()
+        out = fn(state)
+        ms = (time.perf_counter() - t0) * 1000.0
+        tr = state.get("trace")
+        if tr is not None:
+            tr.node_timings.append({"node": name, "ms": round(ms, 1)})
+            if tr.nodes and tr.nodes[-1].get("node") == name:   # each node visits exactly once
+                tr.nodes[-1]["ms"] = round(ms, 1)
+        return out
+    return wrapped
+
+
 # --- build ----------------------------------------------------------------------------------
 def build_graph():
+    assert_filter_vocab()   # fail fast: no filter value the code emits may match zero chunks
     g = StateGraph(GraphState)
-    g.add_node("classify_intent", classify_intent)
-    g.add_node("safe_referral", safe_referral)
-    g.add_node("check_profile_completeness", check_profile_completeness)
-    g.add_node("request_attributes", request_attributes)
-    g.add_node("retrieve", retrieve)
-    g.add_node("grade_evidence", grade_evidence)
-    g.add_node("rewrite_query", rewrite_query)
-    g.add_node("calculate_timeline", calculate_timeline_node)
-    g.add_node("generate_structured_plan", generate_structured_plan)
-    g.add_node("verify_citations", verify_citations)
+    g.add_node("classify_intent", _timed("classify_intent", classify_intent))
+    g.add_node("safe_referral", _timed("safe_referral", safe_referral))
+    g.add_node("check_profile_completeness", _timed("check_profile_completeness", check_profile_completeness))
+    g.add_node("request_attributes", _timed("request_attributes", request_attributes))
+    g.add_node("retrieve", _timed("retrieve", retrieve))
+    g.add_node("grade_evidence", _timed("grade_evidence", grade_evidence))
+    g.add_node("rewrite_query", _timed("rewrite_query", rewrite_query))
+    g.add_node("calculate_timeline", _timed("calculate_timeline", calculate_timeline_node))
+    g.add_node("generate_structured_plan", _timed("generate_structured_plan", generate_structured_plan))
+    g.add_node("verify_citations", _timed("verify_citations", verify_citations))
 
     g.add_edge(START, "classify_intent")
     g.add_conditional_edges("classify_intent", _route_intent,
@@ -461,12 +557,20 @@ def print_trace(s: dict) -> None:
             bits.append(f"[{n['branch']}]")
         if n.get("detail"):
             bits.append(str(n["detail"]))
-        print(f"  {n['node']:28} {' '.join(bits)}")
+        ms = f"{n['ms']:>8.1f} ms" if n.get("ms") is not None else " " * 11
+        print(f"  {ms}  {n['node']:28} {' '.join(bits)}")
     if tr.retrievals:
         print(f"\nRETRIEVAL ATTEMPTS: {len(tr.retrievals)} (retries={tr.retries})")
         for i, rt in enumerate(tr.retrievals, 1):
             print(f"  attempt {i} query={rt.query!r}")
             print(f"    top-{len(rt.final_context)}: {rt.final_context}")
+    total_ms = sum(t["ms"] for t in tr.node_timings)
+    if total_ms:
+        gen = sum(t["ms"] for t in tr.node_timings if t["node"] == "generate_structured_plan")
+        print(f"\nWALL-CLOCK: {total_ms:,.0f} ms total across {len(tr.node_timings)} node calls"
+              + (f"  |  generation {gen:,.0f} ms = {gen / total_ms:.0%} of it" if gen else ""))
+    if tr.filter_starved:
+        print("  ⚠ filter_starved: a filtered retrieval returned zero chunks (see stderr)")
     print(f"\nfinal_node={tr.final_node}  cost=${s.get('cost', 0):.4f}")
 
 

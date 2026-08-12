@@ -15,7 +15,10 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "src"))
 
-from graph import _route_intent, _route_profile, _route_evidence, _filters_from, MAX_RETRIES  # noqa: E402
+import json
+import tempfile
+from graph import (_route_intent, _route_profile, _route_evidence, _filters_from,  # noqa: E402
+                   assert_filter_vocab, _corpus_facet_vocab, _USER_TYPE, _INSURANCE, MAX_RETRIES)
 
 
 class TestIntentRouting(unittest.TestCase):
@@ -78,12 +81,46 @@ class TestFilterMapping(unittest.TestCase):
     def test_insurance_type_passes_through(self):
         self.assertEqual(_filters_from({"insurance_type": "statutory"}), {"insurance_type": "statutory"})
 
+    def test_family_insured_maps_to_statutory(self):
+        # Familienversicherung IS statutory cover; the corpus has no 'family-insured' facet value,
+        # so a pass-through would starve retrieval (the guard's latent second instance).
+        self.assertEqual(_filters_from({"insurance_type": "family-insured"}),
+                         {"insurance_type": "statutory"})
+
     def test_explicit_user_type_wins(self):
         self.assertEqual(_filters_from({"user_type": "student", "employment_status": "employed"}),
                          {"user_type": "student"})
 
     def test_empty_profile_no_filters(self):
         self.assertEqual(_filters_from({}), {})
+
+
+class TestFilterVocabGuard(unittest.TestCase):
+    """The startup guard: every filter value the code can EMIT must exist in the corpus, else it
+    silently starves retrieval. This is the durable form of the employed/employee + family-insured
+    lesson — a code-level orphan fails loudly at build time, caught here, never by a user."""
+
+    def test_real_corpus_passes(self):
+        # Regression guard: if anyone adds a map value the corpus doesn't tag, this test fails.
+        assert_filter_vocab()  # raises on any orphan; passing == every emittable value is valid
+
+    def test_all_map_values_are_in_corpus(self):
+        vocab = _corpus_facet_vocab()
+        for v in _USER_TYPE.values():
+            self.assertIn(v, vocab["user_type"], f"user_type map emits {v!r}, absent from corpus")
+        for v in _INSURANCE.values():
+            self.assertIn(v, vocab["insurance_type"], f"insurance map emits {v!r}, absent from corpus")
+
+    def test_orphan_value_raises(self):
+        # A corpus that lacks the values the maps emit (here: no 'statutory'/'private') must trip
+        # the guard — proving it catches a vocabulary mismatch rather than passing everything.
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False, encoding="utf-8") as fh:
+            for ut in ("any", "employee", "self-employed", "student", "civil-servant"):
+                fh.write(json.dumps({"user_type": ut, "insurance_type": "any"}) + "\n")
+            tmp = fh.name
+        with self.assertRaises(ValueError) as cm:
+            assert_filter_vocab(path=Path(tmp))
+        self.assertIn("insurance_type", str(cm.exception))  # statutory/private are the orphans here
 
 
 if __name__ == "__main__":
