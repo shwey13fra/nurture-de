@@ -47,6 +47,32 @@ corpus + the recorded decisions), flag every divergence, and never present
 re-derived values as the originally-approved ones. Fabricating provenance in a
 provenance project is the exact failure the project exists to prevent.
 
+**Escalation (2026-08-12) — fifth loss, and the rule the writing-it-down form did not
+prevent.** Building the Phase-12 portfolio page, I was about to publish `recall@5 0.85`
+and `behaviour 35% → 77%` — numbers I *remembered* from my own Phase-8b close-out. Only a
+disk check caught it: the on-disk eval records (`eval/last_run.json`) show baseline
+`hybrid_rerank` recall **0.75**, not 0.85 (the 0.85 is a pre-relabel figure that survives
+only in `BUILD_JOURNAL.md` prose, measured against a since-corrected ruler); baseline
+behaviour was **37–38%**, not 35%. The `65% → 77%` pair *was* on disk
+(`eval/phase8b_findings.md`, reproducible via `eval/rescore.py`) — but the strip mixed a
+sourced number with two half-remembered ones, and on a **public** page that is worse than
+in a journal. This is the **fifth** instance of the PM-1 class (review proposal → tokenizer
+path → prompt diff → and now a **results number**). Four of five involved a *number or
+artifact that existed only in transient output* — session context, or a terminal print.
+
+**The rule changes shape.** "Write the review artifact to `knowledge/`" was necessary but
+not sufficient: it addressed documents, not *measurements*. The operational form now:
+**every script that computes a figure I might later quote MUST persist that figure to a
+versioned file as part of its normal run — not print it to stdout.** A number that lives
+only in a terminal is a number I will eventually publish without a source. `rescore.py`
+prints its table and writes nothing; that is the exact gap. (Follow-up, tracked separately
+from Phase 12: `rescore.py` → `eval/results.md` on every run, and an audit of every
+`BUILD_JOURNAL.md` figure for a file behind it. Candidate for a hook, per CLAUDE.md
+"deterministic requirements → hooks" — enforcement, not memory.)
+
+**Test before quoting any number:** "Is there a *file* I can point to that a script wrote,
+or am I quoting a terminal I saw once?" If the latter, re-derive it to a file first.
+
 ---
 
 ## PM-2 — A thin (<3) metadata value can mean a thin CORPUS, not a bad value
