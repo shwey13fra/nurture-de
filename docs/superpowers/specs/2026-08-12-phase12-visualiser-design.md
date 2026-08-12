@@ -17,9 +17,11 @@ does not duplicate it. It optimises for narrative legibility, not information de
 2. **Data: pre-recorded trace JSON, embedded in the page.** An Artifact's CSP blocks external
    fetch, and the goal is "opens instantly with no backend," so the traces are generated **offline**
    and inlined. No live graph call, ever, on the page.
-3. **The recall figure on the page is `0.90` (on-disk), not `0.85` (journal-only).** Per the
-   escalated PM-1 rule (scripts persist figures; don't quote a terminal). See *Numbers* below. This
-   is the one place I overrode the sketch — flag if you disagree.
+3. **Recall on the page is `0.75 → 0.90`, not `0.85 → 0.90`.** The delta is the story (found a
+   ranking failure, diagnosed it as a top-4 discard not a retrieval miss, raised the pool, moved the
+   number); a lone `0.90` can't show improvement. `0.85` is a figure I carried since the first Phase-8
+   report and never sourced — the on-disk baseline is `0.75`, so the unsourced number was
+   *understating* the improvement. See *Numbers* below.
 
 ## The screen (approved layout)
 
@@ -43,7 +45,7 @@ Single 1440×900 screen. No scroll, no click required for the core story. Three 
 │     while it was holding the answer."                                                        │
 ├──────────────────────────────────────────────────────────────────────────────────────────┤
 │  LATENCY retrieval ████████████████▏86%  gen ██▏8%  judges ▏   ANSWER ▸ …cited fam_mutter…  │  BAND 3
-│  recall@5 0.90 · 5 of 6 cross-lingual recovered      behaviour 65% → 77%   [⌄ retry detail] │  (strip)
+│  recall@5 0.75 → 0.90    behaviour 38%→58% (measured), 58%→69% (labels fixed)  [⌄ retry]    │  (strip)
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -66,10 +68,11 @@ and a fix in one image, and it needs no interaction to read.
 **Band 3 — thin strip, three items.** (1) A **per-scenario** latency bar that updates with the
 selected scenario — full answer = retrieval ~86% / gen ~8% / judges; *medical* = ~1.75 s, all
 judge, **no retrieval bar at all** (which is itself the point: refusing is nearly free). (2) The
-final answer + its citations for that scenario. (3) The two **system-level** headline metrics
-(recall@5, behaviour-match) — these are eval-wide, so they stay **constant across scenario
-buttons**, unlike (1) and (2). If the strip is too tight for all three, **drop the answer snippet,
-never the numbers**.
+final answer + its citations for that scenario. (3) The two **system-level** headline metrics as
+before→after deltas (recall@5 `0.75 → 0.90`; behaviour `38% → 58%` measured, then `58% → 69%` after
+five golden-label corrections) — eval-wide, so they stay **constant across scenario buttons**,
+unlike (1) and (2). The delta carries the story; a single number can't. If the strip is too tight
+for all three items, **drop the answer snippet, never the numbers**.
 
 **Behind `⌄ retry detail` (not default).** The retry small-multiples (3 attempts, ~1/4 of slots
 churn per round, grade stays insufficient, hits the cap). Honest but not a headline — it explored,
@@ -112,19 +115,33 @@ This also satisfies the escalated **PM-1** rule (the generator writes figures to
 `traces.json` is the interface between the two units: the page can be styled without re-running the
 generator, and the generator can change without touching the page, as long as the shape holds.
 
-## Numbers on the page (all sourced; reproducible)
+## Numbers on the page — every figure traceable to a file, or dropped
 
-| slot | value | source (file, reproducible) |
+**Rule (from the escalated PM-1):** every number the page shows must resolve to a file a script
+wrote. If a figure can't, it is **dropped, not rounded or remembered**. The whole strip is on one
+basis: **`hybrid_rerank`, answerable subset, n=26 — the same 26 case ids in both runs** (verified),
+so before/after is genuinely apples-to-apples.
+
+| slot | value | source (file; reproducible) |
 |---|---|---|
-| recall@5 | **0.90** | `eval/phase8b_findings.md` (answerable, n=26); `py eval/rescore.py` |
+| recall@5 (before → after) | **0.75 → 0.90** | before: `eval/last_run.json` (hybrid_rerank, answerable) · after: `eval/last_run_phase8b.json` / `eval/phase8b_findings.md`; `py eval/rescore.py` |
 | cross-lingual recovery | **5 of 6 into top-4** | `BUILD_JOURNAL.md` pool-probe (P8 retraction) |
-| behaviour-match | **65% → 77%** | `eval/phase8b_findings.md` l.88; `py eval/rescore.py` (as-measured → after 5 relabels) |
+| behaviour (as measured) | **38% → 58%** | before: `eval/last_run.json` · after: `eval/last_run_phase8b.json` (both answerable n=26) |
+| behaviour (labels fixed) | **58% → 69%** | `eval/phase8b_findings.md` l.89; `py eval/rescore.py` |
 | latency split | retrieval ~86% / gen ~8% | Phase-11 per-node `GraphTrace.node_timings` (BUILD_JOURNAL addendum) |
 | hero ranks / langs | from the trace | `docs/visualiser/traces.json` (generated) |
 
-`0.85` is **not used** (on-disk baseline is `0.75`; `0.85` survives only in journal prose against a
-since-corrected ruler). If a before/after recall is wanted, the honest on-disk pair is `0.75 → 0.90`
-— call it and I'll add it; I won't publish `0.85`.
+**Provenance gap to close in the build:** the baseline `0.75 / 38%` figures are correct but are
+**not currently written by any script** — they were computed ad-hoc by filtering `last_run.json` to
+`hybrid_rerank` + answerable. Per the rule above, that makes them terminal-only. So the generator
+(Unit A) **must emit the baseline hybrid_rerank/answerable figures to `docs/visualiser/traces.json`
+(and ideally `eval/results.md`)** so the page cites a file, not a remembered computation. This is
+the same PM-1 discipline that produced the whole spec.
+
+- **`0.85` is not used** (on-disk baseline is `0.75`; `0.85` survived only in journal prose, against
+  a since-corrected ruler — it *understated* the improvement).
+- The all-43 `65% → 77%` headline is **not** on the strip: the baseline never ran all 43, so the
+  "as measured" before-number for that basis doesn't exist on disk — dropped rather than spliced.
 
 ## Testing / proof
 

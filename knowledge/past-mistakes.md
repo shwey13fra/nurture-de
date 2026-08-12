@@ -73,6 +73,19 @@ from Phase 12: `rescore.py` → `eval/results.md` on every run, and an audit of 
 **Test before quoting any number:** "Is there a *file* I can point to that a script wrote,
 or am I quoting a terminal I saw once?" If the latter, re-derive it to a file first.
 
+**Sixth instance (same session) — the figure I was *correcting with* was also unsourced,
+and it flattered by understating.** Fixing the Phase-12 strip, the reviewer forced
+`0.75 → 0.90` in place of my `0.85 → 0.90`. That surfaced that `0.85` was **my** number,
+carried since the *first* Phase-8 report across several phases, never once sourced from
+disk. The on-disk baseline is **0.75** — so the unsourced figure I had been repeating back
+at the reviewer was **understating my own improvement** (0.75→0.90 is a larger delta than
+0.85→0.90). This is the more insidious shape of the bug: an unsourced number that errs
+*modest* draws no scrutiny precisely because it looks humble, so it survives longer than a
+flattering one would. Being corrected in the generous direction is still a provenance
+failure. The reviewer's refusal to publish `0.85` is the only thing that caught it. **Audit
+scope widened:** check every figure *I* have quoted **this session** against disk, not only
+the ones a script generated (tracked task).
+
 ---
 
 ## PM-2 — A thin (<3) metadata value can mean a thin CORPUS, not a bad value
