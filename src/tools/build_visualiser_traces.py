@@ -24,7 +24,7 @@ SCENARIOS = {
     "full":     ("When does Mutterschutz start if I'm due 2027-03-15 and employed?",
                  {"employment_status": "employed", "due_date": "2027-03-15"}),
     "retry":    ("What are the specific Mutterschutz rules for civil servants (Beamtinnen) in Bavaria?",
-                 {"employment_status": "civil-servant"}),
+                 {"employment_status": "civil-servant", "due_date": "2027-03-15"}),
 }
 HERO_QUERY = "When do I have to tell my employer I'm pregnant?"
 HERO_ANSWER_SOURCE = "fam_mutterschutz"
