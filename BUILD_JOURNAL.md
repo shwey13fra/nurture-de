@@ -517,6 +517,17 @@ dollar cost of the wider pool is zero (local model); the cost is entirely latenc
 in the production/Phase-13 tradeoff, not hidden. It also lengthens the eval itself: 43 cases ×
 ~118 s rerank ≈ 85 minutes of rerank compute alone, so the re-run is time-bound, not budget-bound.
 
+**Confirmed end-to-end by the Phase-11 per-node timing (2026-08-12).** The isolated rerank-pool
+figures above now hold up under a full graph run: the `retrieve` node measured 165 s (0-retry
+path), 86 % of a 191 s user-perceived latency, with generation only 10 % — see the Phase-11
+addendum. The upgrade of this note: **the hosted reranker endpoint is now a latency *requirement*,
+not a nice-to-have.** It sits alongside the **~17 s E5 embedding cold start** (first query of a
+process loads ~1.1 GB of fp16 weights) as the **two things that make the local topology
+unshippable** for an interactive path — one is per-process (cold start, amortised), one is
+per-query (rerank, not amortised and therefore the harder of the two). Both are contained swaps
+the seams already anticipate (`E5Embedder` → hosted embedding; `Reranker` → hosted reranker); the
+point of recording them here is that they are now *measured blockers with named fixes*, not risks.
+
 ### Post-run relabel — a third of my "unanswerable" labels were wrong (pessimism, caught by measurement)
 
 Acting on Results-finding #2, I re-read the answer texts for every lived-experience case I had
@@ -1113,3 +1124,37 @@ expects to be paid. So contra the Phase-8 "~100 % citation validity" worry, the 
 ~6 s when there are issues — the cheapest node in the graph and the one that catches citation
 over-claim. **Keep it.** (Harness + raw JSON kept out of the repo — throwaway; numbers recorded
 here, which is the artefact that matters.)
+
+**Reviewer's accountability notes (recorded as calls someone could review):**
+
+- **The latency estimate was my error, and the error has a precise shape.** I estimated generation
+  at 60–80 % of latency and retrieval ≈ 2 s; measured, retrieval was 86–88 % and generation 5–10 %
+  — off by ~50×. The specific mistake: **I reasoned about the production topology and applied it to
+  a CPU dev box.** 100 XLM-R-large forward passes with no GPU is the entire cost. A latency estimate
+  is *architecture × hardware*, and I collapsed the two — the 2 s figure was right for the machine I
+  was imagining and wrong for the machine it ran on. I only knew because the per-node timings were
+  instrumented; the estimate and the reality would otherwise both have looked like "it answered."
+
+- **`RERANK_POOL=100` is one lever with two measured, opposed effects — record them together.**
+  (1) The wider pool **fixed the cross-lingual ranking failure**: the recorded evidence is that
+  reranking a 100-wide pool *recovers 5 of the 6 cross-lingual cases into the top-4 context window*
+  (P8 retraction + pool-probe; `retrieval.RERANK_POOL` carries the rationale inline). (2) It **costs
+  ~118 s median / 165 s end-to-end per query on CPU.** Same parameter, both effects; that is a
+  *measured tradeoff with a named lever*, not a guess. **Number to confirm:** the reviewer framed
+  effect (1) as "recall 0.85 → 0.90." The repo records recall@5 = 0.85 *identical across configs* on
+  the clean run and expresses the fix as the 5-of-6 top-4 recovery above, not as a recall@5 delta to
+  0.90 — I did not find a recorded 0.90, so I have journaled effect (1) as the recovery count the
+  repo holds. If 0.90 has a source, point me at it and I'll cite it; I won't inscribe it unsourced
+  (provenance project — PM-1 corollary).
+
+- **`family-insured → statutory` is the one judgment made rather than measured.** Every other value
+  in the filter maps is verified against the corpus vocabulary by `assert_filter_vocab()`;
+  `family-insured` is a *domain* call: Familienversicherung is GKV cover held via a family member,
+  so statutory rules apply, and the corpus (which has no `family-insured` facet) is correctly served
+  by the `statutory` chunks. Flagged here as reviewable rather than buried in a mapping table.
+
+- **The guard caught a second live vocabulary mismatch *while it was being built* — the best
+  possible argument for it.** I added `assert_filter_vocab()` to catch the class of the
+  employed/employee bug; on first run it immediately raised on `family-insured`, a real value the
+  profile classifier can emit that matched zero chunks. A guard that finds a second instance of its
+  own bug class the moment it exists is not speculative — it earned its place before it shipped.

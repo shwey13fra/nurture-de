@@ -76,3 +76,25 @@ record). Backing: `BUILD_JOURNAL.md` → "Retraction — the hybrid_rerank row m
 reranker"; the fix (`RERANK_POOL=100`) recovers 5 of 6 cross-lingual cases. Real cost is latency,
 not dollars: ~2 min/query to rerank 100 candidates on CPU (~4× a 20-pool) → needs a GPU/hosted
 reranker in production._
+
+## The latency estimate I got backwards — topology vs hardware (Phase 11, per-node timing)
+
+> I estimated generation would dominate latency. Measured, it was 5–10% — reranking 100 candidates
+> on a CPU was 86%. My reasoning was right for the production topology and wrong for the machine it
+> was running on, which is a distinction I hadn't separated. A latency estimate is architecture
+> times hardware, and I'd collapsed the two.
+
+_Backing: `BUILD_JOURNAL.md` → "Phase 11 addendum — instrument, measure, report"; full path 191 s,
+retrieve 165 s (86%), generation 19 s (10%). I only knew because I'd instrumented per-node timings._
+
+## One parameter, two opposed effects — the rerank pool (Phase 8 + Phase 11)
+
+> Raising the rerank pool to 100 recovered the cross-lingual retrieval failures — 5 of 6 cases that
+> were being retrieved but cut before the reranker saw them, pulled back into the top-4 the model
+> actually reads. The same change made each query 165 seconds on CPU. Same parameter, both effects,
+> and I only knew the second half because I instrumented per-node timings.
+
+_Backing: `BUILD_JOURNAL.md` → pool-probe (5-of-6 recovery) + Phase-11 addendum (165 s). NOTE: an
+earlier framing of the win as "recall 0.85 → 0.90" is not what the repo records — recall@5 was 0.85
+identical across configs; the fix is a top-4 context-window recovery, not a recall@5 delta to 0.90.
+Say the recovery count, or source the 0.90 before using it._
