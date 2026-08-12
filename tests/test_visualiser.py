@@ -44,3 +44,35 @@ class TestSerialisers(unittest.TestCase):
         self.assertEqual(d["node_timings"][0]["node"], "classify_intent")
         self.assertEqual(len(d["retrievals"]), 1)
         self.assertEqual(d["retrievals"][0]["final_context"], ["a"])
+
+
+from tools.visualiser_serialize import answerable_figures, strip_metrics   # noqa: E402
+_EVAL = _ROOT / "eval"
+
+class TestEvalFigures(unittest.TestCase):
+    def test_baseline_hybrid_rerank_answerable(self):
+        f = answerable_figures(_EVAL / "last_run.json", config="hybrid_rerank")
+        self.assertEqual(f["n"], 26)
+        self.assertEqual(f["pct"], 38)          # 10/26 as-measured
+        self.assertEqual(f["recall"], 0.75)
+
+    def test_phase8b_answerable_measured_and_corrected(self):
+        m = answerable_figures(_EVAL / "last_run_phase8b.json")
+        self.assertEqual(m["n"], 26)
+        self.assertEqual(m["pct"], 58)          # 15/26 as-measured
+        self.assertEqual(m["recall"], 0.90)
+        c = answerable_figures(_EVAL / "last_run_phase8b.json", corrected=True)
+        self.assertEqual(c["pct"], 69)          # 18/26 after 5 relabels
+
+    def test_strip_metrics_shape_and_values(self):
+        s = strip_metrics()
+        self.assertEqual(s["recall"]["before"], 0.75)
+        self.assertEqual(s["recall"]["after"], 0.90)
+        self.assertEqual(s["behaviour_measured"]["before"], 38)
+        self.assertEqual(s["behaviour_measured"]["after"], 58)
+        self.assertEqual(s["behaviour_labels_fixed"]["before"], 58)
+        self.assertEqual(s["behaviour_labels_fixed"]["after"], 69)
+        self.assertEqual(s["cross_lingual_recovery"]["recovered"], 5)
+        self.assertEqual(s["cross_lingual_recovery"]["of"], 6)
+        for k in ("recall", "behaviour_measured", "behaviour_labels_fixed"):
+            self.assertIn("source", s[k])        # every figure names its file
