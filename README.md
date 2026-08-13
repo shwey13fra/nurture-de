@@ -101,10 +101,19 @@ cites, the source supports the claim. Full per-case breakdown in [`BUILD_JOURNAL
 
 ## Roadmap
 
-**Planned:** an MCP server exposing `search`; LangGraph orchestration (ask-for-attributes ↔
-retrieve ↔ answer as a graph); a pipeline visualiser (the retrieval trace is already emitted for
-it); a referral layer for questions no document can answer (find an English-speaking doctor, book
-a *Geburtsvorbereitungskurs*); deployment with a hosted embedder + Supabase pgvector.
+**Shipped since:** an MCP server exposing `search` (Phase 10); LangGraph orchestration —
+ask-for-attributes ↔ retrieve ↔ answer as a graph, instrumented per node (Phase 11); a
+[pipeline visualiser](docs/visualiser/index.html) that renders the trace (Phase 12).
+
+**Deployment — costed and deliberately deferred (Phase 13).** A live URL was scoped, priced, and
+skipped on **value**, not cost: the pipeline visualiser already communicates the system better than
+a live query box would. The thin slice is **~$0 idle, ~$0.05/query** (HF Spaces free CPU fits E5 in
+16 GB — only the reranker, at 86–89 % of query latency, must be offloaded to a ~$0.002/query hosted
+API; Chroma runs in-container; pgvector + a hosted embedder are scale-only). Kept as a costed plan:
+[`knowledge/phase13-deployment-plan.md`](knowledge/phase13-deployment-plan.md).
+
+**Still planned:** a referral layer for questions no document can answer (find an English-speaking
+doctor, book a *Geburtsvorbereitungskurs*).
 
 **Known limitations:** prototype scale (22 sources); freshness disclosure is implemented but
 **untestable** — the whole corpus was fetched on one day, so there is no date spread; thin

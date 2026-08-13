@@ -1235,3 +1235,27 @@ retrofit. Verified in-browser at 1440×900: one screen for the core story in eve
 retry detail scrolls (opt-in), and the page makes **zero** network requests beyond its own document
 (the only other requests were the viewer's Adobe extension) — genuinely self-contained, Artifact-
 ready. Executed subagent-driven: fresh implementer per task, green-test gate, task + final review.
+
+## Phase 13 — deployment: scoped, costed, and deliberately skipped (a decision, not a gap)
+
+Phase 13 (deployment) was **scoped, costed, and deliberately skipped** — recorded here as a
+decision so the phase sequence has no silent hole. Standing it up would have been **~$0 idle and
+roughly $0.05/query**, so **cost wasn't the constraint** (full costed plan:
+`knowledge/phase13-deployment-plan.md`). The reason is that it **adds no capability**: the pipeline
+visualiser (Phase 12) already communicates the system better than a live query box would — a
+recruiter sees the whole story in ninety seconds
+(`https://claude.ai/code/artifact/368eeb82-901d-411e-9725-b7a8f840f0d4`), where a deployment would
+give a slower experience of a *smaller* story: one query, one answer, none of the machinery
+visible. And the production swaps (hosted reranker, pgvector, hosted embedder) are ones I can
+**describe precisely because I measured what makes them necessary** — CPU reranking at **86–89 % of
+query latency** and a **~17 s embedding cold start**. Nothing in the thin slice improves the system;
+it is a URL plus hands-on with one swap, and that swap is one I can describe accurately from the
+measurement.
+
+**The correction worth recording.** The original case for deploying assumed a 2.2 GB embedding
+model couldn't be hosted cheaply. **That was wrong** — the corpus embeds **offline**, and only short
+*queries* embed at runtime, which fits a free CPU tier (16 GB) comfortably. The constraint I'd been
+reasoning from **didn't exist**; the only piece that genuinely must be offloaded is the reranker,
+and hosted rerank is a $0.002 pay-per-call, not a rented idle GPU. (A companion to PM-4:
+diagnose the actual wall before designing around an assumed one.) The full slice now lives in the
+README roadmap as a costed plan — more useful as a priced option than as a half-built deployment.
