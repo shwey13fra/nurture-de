@@ -102,9 +102,11 @@
   function renderRibbon(){
     const r=document.getElementById("ribbon"); r.innerHTML="";
     const path=(DATA.scenarios[current].path||[]).join(" ");
+    const retries=DATA.scenarios[current].retries||0;
     RIBBON.forEach((name,i)=>{ if(i)r.appendChild(el("span","sep","→"));
       const on = path.includes(name==="profile"?"check_profile":name);
-      const nd=el("span","node "+(on?"on":""), name); r.appendChild(nd); });
+      const label = (retries>0 && name==="retrieve") ? name+" ↻×"+retries : name;
+      const nd=el("span","node "+(on?"on":""), label); r.appendChild(nd); });
     const fn=DATA.scenarios[current].final_node||"";
     if(fn==="safe_referral"||fn==="request_attributes"){
       r.appendChild(el("span","sep","→")); r.appendChild(el("span","node term",fn+" ⊗")); }
@@ -166,7 +168,7 @@
     // metrics (system-level, constant)
     const met=el("div","metrics"); met.appendChild(el("div","qmeta","System (eval)"));
     met.appendChild(el("div",null)).innerHTML =
-      "recall@5 <b>"+m.recall.before+" → "+m.recall.after+"</b>";
+      "recall@5 <b>"+m.recall.before.toFixed(2)+" → "+m.recall.after.toFixed(2)+"</b>";
     met.appendChild(el("div",null)).innerHTML =
       "behaviour <b>"+m.behaviour_measured.before+"% → "+m.behaviour_measured.after+"%</b> measured";
     met.appendChild(el("div",null)).innerHTML =
