@@ -33,7 +33,7 @@ cross-lingual answering — is the core feature, not a nicety.
 
 ```mermaid
 flowchart LR
-    subgraph Ingest [ingest · offline, once]
+    subgraph Ingest ["ingest · offline, once"]
         S[sources.yaml<br/>22 official sources] --> F[fetch<br/>robots-checked]
         F --> X[extract<br/>clean Markdown]
         X --> C[chunk<br/>question-anchored]
@@ -42,17 +42,17 @@ flowchart LR
         J --> E[E5 dense<br/>Chroma]
         J --> B[BM25 sparse]
     end
-    subgraph Query [query · LangGraph workflow]
+    subgraph Query ["query · LangGraph workflow"]
         Q([question]) --> CI[classify_intent]
-        CI -->|medical| SR[safe_referral ⊗]
+        CI -->|medical| SR["safe_referral (end)"]
         CI -->|informational| CP[check_profile]
-        CP -->|missing attr| RA[request_attributes ⊗]
-        CP -->|complete| RT[retrieve<br/>hybrid RRF + filter + rerank]
+        CP -->|missing attr| RA["request_attributes (end)"]
+        CP -->|complete| RT["retrieve<br/>hybrid RRF + filter + rerank"]
         RT --> GR{grade_evidence}
-        GR -->|insufficient ↻ ≤2| RW[rewrite_query] --> RT
-        GR -->|sufficient| TL[timeline<br/>dates in Python]
-        TL --> GN[generate<br/>Claude Opus · grounded · cited]
-        GN --> VC[verify_citations] --> ANS([cited answer<br/>or honest refusal])
+        GR -->|"insufficient, retry max 2"| RW[rewrite_query] --> RT
+        GR -->|sufficient| TL["timeline<br/>dates in Python"]
+        TL --> GN["generate<br/>Claude Opus · grounded · cited"]
+        GN --> VC[verify_citations] --> ANS(["cited answer<br/>or honest refusal"])
     end
     E -.-> RT
     B -.-> RT
