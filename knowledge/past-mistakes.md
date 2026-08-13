@@ -286,3 +286,35 @@ the concrete reason every stage in this system is instrumented.
 
 **Test before trusting any green result:** "Did I read the *intermediate* artifact — the ranks, the
 pool, the written file — or only the final output that happens to look right?"
+
+---
+
+## PM-10 — A measurement not written to a versioned file isn't a measurement — it's a memory of one
+
+**Rule (generalises past this project):** A number that exists only as a terminal print or a
+scratchpad file is not evidence — it is a *recollection* of evidence, and recollections drift
+**toward the number you wanted**. The only measurement you can quote later is one a script wrote to
+a versioned file at the time it ran. This is stronger than "persist your figures" (PM-1's
+escalation): it says the unversioned number is actively *dangerous*, because it feels like data
+while decaying into a flattering memory. If you cannot point to the file, you do not have the
+measurement — re-run it to a file, or do not quote it.
+
+**Incident (2026-08-13, the figure audit).** The Phase-11 latency/cost story — the most striking
+result of that phase — came from `measure_phase11.py`, whose output was **scratchpad and never
+committed**. The **percentages** (retrieval 86–89 %, generation 5–10 %) turned out recoverable from
+`docs/visualiser/traces.json`; the **absolutes did not** — the "191 s / 165 s" quoted in the journal
+don't even reproduce (a committed run shows ~243 s / ~216 s; CPU wall-clock varies). The dollar
+figures ($0.081 / $0.134 / ~$0.23), the "verify flagged 1 of 2", and the "5 of 6 cross-lingual
+recovered" count have **no committed source at all**. And the companion case (PM-1 sixth instance):
+the `0.85` recall I carried for phases was a memory that had drifted *down* from the on-disk `0.75`,
+understating my own work — memory drifts toward the comfortable number, not always the flattering
+one. `knowledge/figure-audit-2026-08-13.md` is the full sourced/prose-only/contradicted ledger.
+
+**Relationship to PM-1.** PM-1 (escalated) says *scripts must persist figures*. PM-10 is the reason
+it matters, stated as a bar you can apply to any number before you say it out loud: **no file, no
+measurement.** The fix that made it structural: `rescore.py` now writes `eval/results.md` every run;
+the visualiser's numbers all come from `traces.json`; and the audit itself is a committed file.
+
+**Test before quoting any measured number in a README, post, or interview:** "Can I open the file a
+script wrote that contains this exact number?" If not, it is a memory — re-derive it to a file first,
+or say the file-backed version (here: the percentage split, never the second count).

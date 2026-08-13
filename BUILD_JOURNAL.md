@@ -518,9 +518,10 @@ in the production/Phase-13 tradeoff, not hidden. It also lengthens the eval itse
 ~118 s rerank ≈ 85 minutes of rerank compute alone, so the re-run is time-bound, not budget-bound.
 
 **Confirmed end-to-end by the Phase-11 per-node timing (2026-08-12).** The isolated rerank-pool
-figures above now hold up under a full graph run: the `retrieve` node measured 165 s (0-retry
-path), 86 % of a 191 s user-perceived latency, with generation only 10 % — see the Phase-11
-addendum. The upgrade of this note: **the hosted reranker endpoint is now a latency *requirement*,
+finding above now holds under a full graph run: on the 0-retry path the `retrieve` node is
+**86–89 % of user-perceived latency, generation only 9–10 %** (file-backed split in
+`docs/visualiser/traces.json`; absolute wall-clock is CPU-variant and not canonical) — see the
+Phase-11 addendum. The upgrade of this note: **the hosted reranker endpoint is now a latency *requirement*,
 not a nice-to-have.** It sits alongside the **~17 s E5 embedding cold start** (first query of a
 process loads ~1.1 GB of fp16 weights) as the **two things that make the local topology
 unshippable** for an interactive path — one is per-process (cold start, amortised), one is
@@ -1072,23 +1073,31 @@ added. Next: Phase 12 (the visualiser) renders `GraphTrace`.
 Per-node wall-clock timing was **specced but not delivered** in the first Phase-11 pass. Added it
 (zero coupling: a `_timed` wrapper in `build_graph` records ms onto `GraphTrace.node_timings`; node
 bodies untouched) and ran the four scenarios **warm** (E5 + cross-encoder + HTTP client primed on a
-discarded run first, so model-load is out of the numbers). Measured on the local CPU dev box; the
-absolute retrieve seconds carry high variance under load, but the *structure* is unambiguous.
+discarded run first, so model-load is out of the numbers). Measured on the local CPU dev box. **Absolute
+wall-clock is CPU-variant and does not reproduce run-to-run, so the record is the *share of
+latency*, not a second count** (the split is file-backed in `docs/visualiser/traces.json`
+`scenarios.{full,retry}.node_timings`; the absolutes there differ from an earlier harness run — see
+the provenance note below).
 
-| path | total | retrieve | generation | gen % | other (judges) | cost |
-|---|--:|--:|--:|--:|--:|--:|
-| medical refusal (1 call) | 1.75 s | — | — | — | classify 1.75 s | $0.003 |
-| missing attributes (2 calls) | 3.19 s | — | — | — | classify+profile 3.19 s | $0.008 |
-| full answer, 0 retries | **191 s** | **165 s (86%)** | 19 s | **10%** | 5 judge calls ≈ 7.5 s | $0.081 |
-| full answer, 2 retries | **356 s** | **316 s (88%)** ×3 | 17 s | **5%** | 8 judge calls ≈ 18 s | $0.134 |
+| path | retrieval share of latency | generation share | dominated by |
+|---|--:|--:|---|
+| medical refusal | — (no retrieval runs) | — | one cheap `classify` call |
+| missing attributes | — (no retrieval runs) | — | two cheap judge calls |
+| full answer, 0 retries | **86–89 %** | **9–10 %** | the CPU cross-encoder rerank of the 100-pool |
+| full answer, 2 retries | **~88 %** (×3 rerank passes) | **5–6 %** | rerank, now run three times |
+
+*Absolute, for context only (cite the file, not memory):* one committed run
+(`docs/visualiser/traces.json`) shows the full 0-retry path at ~243 s total / ~216 s retrieve;
+an earlier throwaway-harness run measured ~191 s / ~165 s. **Quote the split, not the seconds.** A
+four-scenario run cost ≈ $0.23 (one-off, not persisted — treat as illustrative).
 
 **The estimate was inverted, which is the interesting outcome.** Reviewer's estimate: generation
-60–80 % of latency, retrieval + reranking ≈ 2 s combined. Reality on this box: **retrieval is
-86–88 %, generation only 5–10 %, and a single retrieve is 100–165 s — not 2 s but ~50–80× that.**
+60–80 % of latency, retrieval + reranking a small slice. Reality on this box: **retrieval is
+86–89 % of user-perceived latency, generation only 5–10 %** — the split flipped end to end.
 The entire cost is the **`bge-reranker-v2-m3` cross-encoder scoring the 100-candidate pool on CPU**
 (100 XLM-R-large forward passes, no GPU). Dense embed + BM25 + RRF + filter are together a few ms;
-`RERANK_POOL=100` on CPU is the whole latency. The judge (Haiku) calls are a steady ~1.5–2.5 s each;
-generation (Opus) is a real 17–19 s but dwarfed. **The reviewer's 2-second figure is right for the
+`RERANK_POOL=100` on CPU is the whole latency. The judge (Haiku) calls are a small, steady slice;
+generation (Opus) is real but dwarfed — single-digit-percent of the path. **The reviewer's 2-second figure is right for the
 *production topology* — the hosted reranker endpoint already named as the swap target in
 `retrieval.py` collapses this to sub-second — so generation would indeed dominate in prod. But that
 is now a *measured* claim with a named lever: `RERANK_POOL` is the single biggest latency knob, and
@@ -1128,9 +1137,10 @@ here, which is the artefact that matters.)
 **Reviewer's accountability notes (recorded as calls someone could review):**
 
 - **The latency estimate was my error, and the error has a precise shape.** I estimated generation
-  at 60–80 % of latency and retrieval ≈ 2 s; measured, retrieval was 86–88 % and generation 5–10 %
-  — off by ~50×. The specific mistake: **I reasoned about the production topology and applied it to
-  a CPU dev box.** 100 XLM-R-large forward passes with no GPU is the entire cost. A latency estimate
+  at 60–80 % of latency and retrieval a small slice; measured, retrieval was **86–89 %** and
+  generation **5–10 %** — the split inverted end to end. The specific mistake: **I reasoned about
+  the production topology and applied it to a CPU dev box.** 100 XLM-R-large forward passes with no
+  GPU is the entire cost. A latency estimate
   is *architecture × hardware*, and I collapsed the two — the 2 s figure was right for the machine I
   was imagining and wrong for the machine it ran on. I only knew because the per-node timings were
   instrumented; the estimate and the reality would otherwise both have looked like "it answered."
@@ -1138,9 +1148,10 @@ here, which is the artefact that matters.)
 - **`RERANK_POOL=100` is one lever with two measured, opposed effects — record them together.**
   (1) The wider pool **fixed the cross-lingual ranking failure**: the recorded evidence is that
   reranking a 100-wide pool *recovers 5 of the 6 cross-lingual cases into the top-4 context window*
-  (P8 retraction + pool-probe; `retrieval.RERANK_POOL` carries the rationale inline). (2) It **costs
-  ~118 s median / 165 s end-to-end per query on CPU.** Same parameter, both effects; that is a
-  *measured tradeoff with a named lever*, not a guess. **Number to confirm:** the reviewer framed
+  (P8 retraction + pool-probe; `retrieval.RERANK_POOL` carries the rationale inline). (2) It makes
+  **the CPU cross-encoder rerank ~86–89 % of query latency** (file-backed split in
+  `docs/visualiser/traces.json`; absolute wall-clock is CPU-variant and not quoted). Same parameter,
+  both effects; that is a *measured tradeoff with a named lever*, not a guess. **Number to confirm:** the reviewer framed
   effect (1) as "recall 0.85 → 0.90." The repo records recall@5 = 0.85 *identical across configs* on
   the clean run and expresses the fix as the 5-of-6 top-4 recovery above, not as a recall@5 delta to
   0.90 — I did not find a recorded 0.90, so I have journaled effect (1) as the recovery count the

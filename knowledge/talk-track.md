@@ -84,17 +84,20 @@ reranker in production._
 > was running on, which is a distinction I hadn't separated. A latency estimate is architecture
 > times hardware, and I'd collapsed the two.
 
-_Backing: `BUILD_JOURNAL.md` → "Phase 11 addendum — instrument, measure, report"; full path 191 s,
-retrieve 165 s (86%), generation 19 s (10%). I only knew because I'd instrumented per-node timings._
+_Backing: `BUILD_JOURNAL.md` → "Phase 11 addendum"; retrieval **86–89 %** of latency, generation
+**5–10 %** — split file-backed in `docs/visualiser/traces.json`; absolute CPU wall-clock varies run
+to run, so quote the split, not a second count. I only knew because I'd instrumented per-node timings._
 
 ## One parameter, two opposed effects — the rerank pool (Phase 8 + Phase 11)
 
 > Raising the rerank pool to 100 recovered the cross-lingual retrieval failures — 5 of 6 cases that
 > were being retrieved but cut before the reranker saw them, pulled back into the top-4 the model
-> actually reads. The same change made each query 165 seconds on CPU. Same parameter, both effects,
-> and I only knew the second half because I instrumented per-node timings.
+> actually reads. The same change made the CPU cross-encoder rerank about 86% of every query's
+> latency. Same parameter, both effects, and I only knew the second half because I instrumented
+> per-node timings.
 
-_Backing: `BUILD_JOURNAL.md` → pool-probe (5-of-6 recovery) + Phase-11 addendum (165 s). NOTE: an
+_Backing: `BUILD_JOURNAL.md` → pool-probe (5-of-6 recovery) + Phase-11 addendum (rerank ≈ 86–89 %
+of latency; absolute CPU seconds vary run to run and aren't quoted). NOTE: an
 earlier framing of the win as "recall 0.85 → 0.90" is not what the repo records — recall@5 was 0.85
 identical across configs; the fix is a top-4 context-window recovery, not a recall@5 delta to 0.90.
 Say the recovery count, or source the 0.90 before using it._
