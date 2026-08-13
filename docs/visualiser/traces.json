@@ -362,5 +362,6 @@
     }
   },
   "generated_at": "2026-08-13",
-  "commit": "57f1a10"
+  "commit": "57f1a10",
+  "max_retries": 2
 }
