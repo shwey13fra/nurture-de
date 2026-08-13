@@ -7,7 +7,9 @@ Why this exists (Phase-8 close): the golden set and the system prompt were chang
 same cycle, so some recorded `pass` values reflect labels that have since been corrected. This
 recomputes behaviour-match from the already-recorded `judged` values against whatever
 golden.jsonl now says, and prints the AS-MEASURED number beside the AFTER-CORRECTION number so
-the two are never conflated. It never calls the model and never mutates the run file.
+the two are never conflated. It ALSO writes the table to `eval/results.md` every run, so a figure
+quoted elsewhere always has a file behind it (PM-1, escalated). It never calls the model and never
+mutates the run file.
 
 `pass` logic mirrors run_eval.evaluate():
   - prompt_injection: pass = judged in ANSWERING and not injection_complied
@@ -22,16 +24,40 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
 GOLDEN = _ROOT / "eval" / "golden.jsonl"
+RESULTS = _ROOT / "eval" / "results.md"   # every run persists its table here (PM-1: don't only print)
 ANSWERING = ("answer", "answer_partial", "prefer_tier")
 
 
 def current_labels() -> dict[str, str]:
     labels = {}
-    for line in GOLDEN.open(encoding="utf-8"):
-        if line.strip():
-            row = json.loads(line)
-            labels[row["id"]] = row["expected_behaviour"]
+    with GOLDEN.open(encoding="utf-8") as fh:   # `with` so the handle closes (no ResourceWarning)
+        for line in fh:
+            if line.strip():
+                row = json.loads(line)
+                labels[row["id"]] = row["expected_behaviour"]
     return labels
+
+
+def _write_results(run_path: str, n: int, table: list[str], n_flips: int) -> None:
+    """Persist the metrics table to eval/results.md so a quoted figure always has a file behind it
+    (PM-1, escalated). Overwrites with the latest run; git history keeps the prior snapshots. The
+    header names the run file so the figures are never ambiguous."""
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%MZ")
+    lines = [
+        "# rescore results (auto-written by `eval/rescore.py` — do not hand-edit)",
+        "",
+        f"- generated: {ts}",
+        f"- run file: `{Path(run_path).name}`  ({n} records)",
+        "- golden labels: `eval/golden.jsonl`",
+        f"- reproduce: `py eval/rescore.py --run {Path(run_path).name}`",
+        "",
+        *table,
+        "",
+        f"_label corrections / pass flips this run: {n_flips}_",
+        "",
+    ]
+    RESULTS.write_text("\n".join(lines), encoding="utf-8")
 
 
 def recompute_pass(rec: dict, expected: str) -> bool:
@@ -67,15 +93,23 @@ def main() -> None:
     recalls = [r["recall"] for r in ans if r["recall"] is not None]
     recall_mean = sum(recalls) / len(recalls) if recalls else 0.0
 
+    table = [
+        "| metric | as measured | after label correction |",
+        "|---|---|---|",
+        f"| behaviour match (all {n}) | {measured}/{n} = {100*measured/n:.0f}% "
+        f"| {corrected}/{n} = {100*corrected/n:.0f}% |",
+        f"| behaviour match (answerable {len(ans)}) | {measured_ans}/{len(ans)} = "
+        f"{100*measured_ans/len(ans):.0f}% | {corrected_ans}/{len(ans)} = "
+        f"{100*corrected_ans/len(ans):.0f}% |",
+        f"| recall@5 (answerable) | {recall_mean:.2f} | {recall_mean:.2f} (unchanged) |",
+    ]
     print(f"Run file: {args.run}  ({n} records)\n")
-    print("| metric | as measured | after label correction |")
-    print("|---|---|---|")
-    print(f"| behaviour match (all {n}) | {measured}/{n} = {100*measured/n:.0f}% "
-          f"| {corrected}/{n} = {100*corrected/n:.0f}% |")
-    print(f"| behaviour match (answerable {len(ans)}) | {measured_ans}/{len(ans)} = "
-          f"{100*measured_ans/len(ans):.0f}% | {corrected_ans}/{len(ans)} = "
-          f"{100*corrected_ans/len(ans):.0f}% |")
-    print(f"| recall@5 (answerable) | {recall_mean:.2f} | {recall_mean:.2f} (unchanged) |")
+    for line in table:
+        print(line)
+
+    # persist the table so a quoted figure always has a file behind it (PM-1, escalated)
+    _write_results(args.run, n, table, len(flips))
+    print(f"\n(wrote {RESULTS})")
 
     print(f"\nLabel changes / pass flips ({len(flips)}):")
     for cid, old_exp, new_exp, judged, old_ok, new_ok in sorted(flips):
