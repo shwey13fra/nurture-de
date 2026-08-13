@@ -1158,3 +1158,69 @@ here, which is the artefact that matters.)
   employed/employee bug; on first run it immediately raised on `family-insured`, a real value the
   profile classifier can emit that matched zero chunks. A guard that finds a second instance of its
   own bug class the moment it exists is not speculative — it earned its place before it shipped.
+
+## Phase 12 — the pipeline visualiser (portfolio, static, 90 seconds)
+
+**The audience decision, made first: portfolio piece, not a debug tool.** `src/ask.py --trace`
+already IS the debug tool — it found two real bugs (the Phase-8 starved reranker, the Phase-11
+filter starvation). Rebuilding that in HTML would be duplication. So the visualiser has exactly one
+job: make three weeks of invisible work visible to a stranger in **ninety seconds**, from a static
+page — no clone, no server, no 165-second wait. Everything else followed from that. Spec + plan:
+`docs/superpowers/specs/2026-08-12-phase12-visualiser-design.md`, `docs/superpowers/plans/2026-08-12-phase12-visualiser.md`.
+Artifact (private): `https://claude.ai/code/artifact/368eeb82-901d-411e-9725-b7a8f840f0d4`.
+
+**The hero is the cross-lingual rank-6 discard, not the retry loop.** One screen, no scroll: a
+ribbon of the seven nodes with four scenario buttons; a two-column BEFORE/AFTER of the query *"When
+do I have to tell my employer I'm pregnant?"* — pool-20 top-4 is six English `tk_maternity_*`
+chunks with the German `fam_mutterschutz` answer stranded at **rank 6, below the cut**; pool-100 +
+rerank pulls it to **rank 0**. Generated from a **real trace** (the primary query reproduced the
+discard on the first try — before-rank 6, after-rank 0 — no fallback needed), asserted at build
+time by a `before_rank > 3 and after_rank == 0` invariant: if it ever stops reproducing, the build
+fails rather than ship a plausible illustration. Medical/missing scenarios swap the hero for the
+**safety** statement ("terminated after 2 nodes, no retrieval, referred to a doctor / 112") — the
+refusal made visible, worth as much as the retrieval story. The retry loop is demoted behind a
+toggle (it explored, churned ~1/4 of slots per attempt, correctly failed to recover a genuine
+corpus gap, hit the cap) — but `retrieve ↻×2` on the ribbon plus the honest "I don't have the
+Bavaria-specific rules" answer keep it visible in one glance: demoting it meant not making it the
+hero, not hiding that it exists.
+
+**The offline-generator architecture is the structural fix for PM-1.** The whole reason a results
+number nearly got published from memory (PM-1 sixth instance: `0.85` carried for phases, on-disk
+baseline `0.75`, understating the win) is that figures lived in terminals, not files. So the
+visualiser is built the opposite way: a generator (`build_visualiser_traces.py`) **computes and
+persists** every number to `docs/visualiser/traces.json` — including the baseline `0.75 / 38%` that
+was previously only ever computed ad-hoc — and the page **only renders** what was persisted, never
+computes. The rule "scripts persist figures, don't print them" stopped being a lesson and became
+the shape of the code. Every number on the page traces to a file: recall `0.75 → 0.90`, behaviour
+`38% → 58%` (measured) then `58% → 69%` (five golden-label corrections), all `hybrid_rerank`,
+answerable, n=26, same 26 ids both runs — from `eval/last_run.json` + `eval/last_run_phase8b.json`,
+reproducible via `eval/rescore.py`. `0.85` and the all-43 `65→77` were dropped (no on-disk baseline
+for that basis) rather than rounded.
+
+**The Task-4 guard is the moment a repeatedly-broken rule became impossible to break.** PM-1 had
+recurred six times because "keep provenance" is a discipline, and disciplines lapse. `TestTemplate`
+`Guards.test_template_has_no_hand_typed_metric_numbers` fails the build if any metric literal
+(`0.75`, `0.90`, `38%`, …) appears in `template.html` — so a number on the page that isn't wired to
+the data is now a red test, not a matter of remembering. The final review pushed this further: it
+caught *structural* numbers (`pool 20/100`, `top-4 cutoff`, `3 attempts / hard cap 2`) hard-typed
+even though the eval figures were clean; those were wired to the trace data too (`max_retries` from
+`graph.MAX_RETRIES`), so **no** number on the page is hand-typed. The guard can't catch structural
+constants, but the review did, and the fix closed the class.
+
+**Build log — three bugs the process caught, none shipped.**
+1. *Retry scenario misrouted.* First generation, the `retry` button terminated at
+   `request_attributes` (nondeterministic `check_profile` + a too-thin profile) instead of firing
+   the loop — the button would have looked broken. Fixed by completing the profile
+   (`due_date` added); probed `check_profile` 3/3 → `retrieve` before spending another generation.
+2. *A test clobbered the deliverable.* `TestWriteOutputs` wrote to the **real** `docs/visualiser/`
+   paths, so every full-suite run overwrote the generated `traces.json`/`index.html` with the test
+   fixture. Caught when the working tree showed `traces.json` down 354 lines after a routine suite
+   run. Fixed to a temp dir; the real artifacts now stay clean across suite runs.
+3. *Structural numbers hard-typed* (final review) — wired to data, above.
+
+**Reuse held.** `graph.py` and `retrieval.py` are consumed **unchanged** (empty diff over the
+branch) — the Phase-5/11 trace contract was built for exactly this, and the visualiser needed no
+retrofit. Verified in-browser at 1440×900: one screen for the core story in every scenario, the
+retry detail scrolls (opt-in), and the page makes **zero** network requests beyond its own document
+(the only other requests were the viewer's Adobe extension) — genuinely self-contained, Artifact-
+ready. Executed subagent-driven: fresh implementer per task, green-test gate, task + final review.
