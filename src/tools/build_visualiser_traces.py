@@ -82,12 +82,13 @@ def build_traces() -> dict:
             "generated_at": str(date.today()), "commit": commit}
 
 
-def write_outputs(traces: dict) -> None:
-    _VIZ.mkdir(parents=True, exist_ok=True)
-    (_VIZ / "traces.json").write_text(json.dumps(traces, ensure_ascii=False, indent=2),
-                                      encoding="utf-8")
+def write_outputs(traces: dict, out_dir=None) -> None:
+    viz = out_dir or _VIZ
+    viz.mkdir(parents=True, exist_ok=True)
+    (viz / "traces.json").write_text(json.dumps(traces, ensure_ascii=False, indent=2),
+                                     encoding="utf-8")
     tpl = (_VIZ / "template.html").read_text(encoding="utf-8")
-    (_VIZ / "index.html").write_text(inject(tpl, traces), encoding="utf-8")
+    (viz / "index.html").write_text(inject(tpl, traces), encoding="utf-8")
 
 
 def main(argv=None) -> None:

@@ -1,4 +1,4 @@
-import sys, unittest
+import sys, tempfile, unittest
 from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "src"))
@@ -148,9 +148,10 @@ class TestWriteOutputs(unittest.TestCase):
                   "final_node": "safe_referral", "terminated_after": 2, "node_timings": [],
                   "answer": None}}, "hero": {}, "metrics": {"recall": {"source": "x"}},
                   "generated_at": "2026-08-12", "commit": "deadbeef"}
-        write_outputs(traces)                       # writes docs/visualiser/{traces.json,index.html}
-        idx = (_ROOT/"docs"/"visualiser"/"index.html").read_text(encoding="utf-8")
+        tmp = Path(tempfile.mkdtemp())
+        write_outputs(traces, out_dir=tmp)          # writes to a throwaway temp dir, not docs/visualiser
+        idx = (tmp/"index.html").read_text(encoding="utf-8")
         self.assertNotIn("/*__TRACES__*/", idx)     # placeholder consumed
         self.assertIn("deadbeef", idx)              # data embedded
-        on_disk = _json.loads((_ROOT/"docs"/"visualiser"/"traces.json").read_text(encoding="utf-8"))
+        on_disk = _json.loads((tmp/"traces.json").read_text(encoding="utf-8"))
         self.assertEqual(on_disk["commit"], "deadbeef")
