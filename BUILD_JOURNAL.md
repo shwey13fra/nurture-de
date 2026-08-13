@@ -1259,3 +1259,39 @@ reasoning from **didn't exist**; the only piece that genuinely must be offloaded
 and hosted rerank is a $0.002 pay-per-call, not a rented idle GPU. (A companion to PM-4:
 diagnose the actual wall before designing around an assumed one.) The full slice now lives in the
 README roadmap as a costed plan — more useful as a priced option than as a half-built deployment.
+
+## Phase 14 — packaging: the README carries the arc (the last phase)
+
+Packaging meant **presenting the story**, not Python packaging — a reviewer isn't going to `pip
+install` this; they read the repo root and click the visualiser. So Phase 14 rewrote the top-level
+**README** to carry the whole arc in one file (a second `STORY.md` would split attention and go
+stale): the *"not medical advice"* banner, the public visualiser link **high up** as the 90-second
+entry point, why-the-problem, a mermaid diagram of ingest + the LangGraph query workflow, the
+does/doesn't table, **results with every figure traced to a file**, six selected findings each with
+its number, honest limitations (stated openly — the 0.30 English cross-lingual recall included,
+because the version that admits it is more credible than a polished one that hides it), the costed
+deploy-skip, and a quickstart.
+
+**Repo hygiene as part of the story.** `PHASES.md` had lagged at Phase 1b — a reviewer reads it,
+sees the project "stopped" three phases in, and leaves; two overlapping phase logs is one too many,
+so it was **deleted** and `BUILD_JOURNAL.md` is the single record. `check_frankfurt_access.py` was
+**committed** (not cruft): it reproduces *live* why a robots-permitted source was still excluded
+(WAF 403 on our honest UA, which we refused to spoof) — provenance tooling of the same class as the
+committed `check_robots.py`. `linkedin/` stays untracked (drafts aren't repo content).
+
+**Quickstart, verified with an honest number.** A fresh clone must build the gitignored index from
+the committed `chunks.jsonl`. Measured end-to-end: `index.py` is **~45 minutes** on this CPU box
+(plus the one-time ~2.2 GB E5 download) — E5 in fp16 to fit memory, and CPUs don't accelerate fp16,
+so it's compute-bound. Stated plainly in the quickstart rather than left as a silent ten-minute
+wait. (The build also re-confirmed the P7 fix: 0 chunks over E5's 512-token limit.)
+
+**The figure check caught the pattern one more time.** Every number in the README was traced to a
+file per the audit (`knowledge/figure-audit-2026-08-13.md`). Two drifted from memory and were
+corrected against disk: "55 eval cases" was **56** (`golden.jsonl`), and "~23 sources" was **22**
+active (`sources.yaml`). Small, but exactly PM-10's shape — an unversioned number drifting toward a
+remembered one — caught here by checking the file, not trusting the recollection. Latency is quoted
+as the **percentage split** (retrieval 86–89 %, generation 5–10 %), never absolute seconds.
+
+The visualiser artifact was made public (a claude.ai share-menu action — the only step in this phase
+I couldn't do from the tools, and said so rather than claiming otherwise). That closes the build:
+P1 corpus → P14 packaging, one honest record throughout.
