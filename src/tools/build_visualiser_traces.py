@@ -79,7 +79,7 @@ def build_traces() -> dict:
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=_ROOT,
                             capture_output=True, text=True).stdout.strip()
     return {"scenarios": scenarios, "hero": hero, "metrics": strip_metrics(),
-            "generated_at": str(date.today()), "commit": commit}
+            "generated_at": str(date.today()), "commit": commit, "max_retries": graph.MAX_RETRIES}
 
 
 def write_outputs(traces: dict, out_dir=None) -> None:
@@ -97,6 +97,8 @@ def main(argv=None) -> None:
     args = ap.parse_args(argv)
     if args.reuse:
         traces = json.loads((_VIZ / "traces.json").read_text(encoding="utf-8"))
+        import graph as _g
+        traces.setdefault("max_retries", _g.MAX_RETRIES)
     else:
         traces = build_traces()
     write_outputs(traces)

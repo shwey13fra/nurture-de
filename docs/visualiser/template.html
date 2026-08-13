@@ -129,7 +129,7 @@
     const cols=el("div","cols");
     const mk=(title, side, promoted)=>{ const c=el("div","col"); c.appendChild(el("h3",null,title));
       side.items.forEach(it=>{
-        if(side.cutoff && it.rank===side.cutoff) c.appendChild(el("div","cut","top-4 cutoff"));
+        if(side.cutoff && it.rank===side.cutoff) c.appendChild(el("div","cut","top-"+side.cutoff+" cutoff"));
         const row=el("div","row"+(promoted&&it.rank===0?" promoted":""));
         row.appendChild(el("span","rk",it.rank));
         row.appendChild(langChip(it.language));
@@ -140,8 +140,8 @@
         if(isAns && !promoted && it.rank>=side.cutoff) row.appendChild(el("span","answer"," ◀ discarded"));
         c.appendChild(row); });
       return c; };
-    cols.appendChild(mk("Before — pool 20, top-4", H.before, false));
-    cols.appendChild(mk("After — pool 100 + rerank", H.after, true));
+    cols.appendChild(mk("Before — pool "+H.before.pool+", top-"+H.before.cutoff, H.before, false));
+    cols.appendChild(mk("After — pool "+H.after.pool+" + rerank", H.after, true));
     h.appendChild(cols);
     h.appendChild(el("div","caption", H.caption));
   }
@@ -185,7 +185,7 @@
   function renderRetry(){
     const p=document.getElementById("retryPanel"); p.innerHTML="";
     const rt=DATA.scenarios.retry; if(!rt||!rt.retrievals) return;
-    p.appendChild(el("h3",null,"Retry loop — 3 attempts (bounded, hard cap 2)"));
+    p.appendChild(el("h3",null,"Retry loop — "+rt.retrievals.length+" attempts (bounded, hard cap "+DATA.max_retries+")"));
     rt.retrievals.forEach((r,i)=>{ const d=el("div");
       d.innerHTML="<b>attempt "+(i+1)+"</b>: "+(r.final_context||[]).map(c=>c.split("__")[0]).join(", ");
       p.appendChild(d); });
