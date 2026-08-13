@@ -98,3 +98,15 @@ _Backing: `BUILD_JOURNAL.md` → pool-probe (5-of-6 recovery) + Phase-11 addendu
 earlier framing of the win as "recall 0.85 → 0.90" is not what the repo records — recall@5 was 0.85
 identical across configs; the fix is a top-4 context-window recovery, not a recall@5 delta to 0.90.
 Say the recovery count, or source the 0.90 before using it._
+
+## The failure mode that makes these systems hard (Phases 8, 11, 12)
+
+> Three separate bugs in this build produced plausible output rather than errors — a retrieved
+> chunk cut by a top-4 window, a filter vocabulary mismatch that silently emptied the pool, and a
+> test that overwrote the published deliverable with fixture data. None crashed. Each was found by
+> reading an intermediate artifact. That's the failure mode that makes these systems hard, and it's
+> why I instrumented every stage.
+
+_Backing: `knowledge/past-mistakes.md` PM-9 (the three instances, with fixes: RERANK_POOL=100,
+assert_filter_vocab, temp-dir test). The instrumentation is the Phase-5 RetrievalTrace + Phase-11
+GraphTrace the visualiser renders._

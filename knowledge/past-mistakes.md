@@ -251,3 +251,38 @@ third time the pipeline will shout.
 
 **Test before trusting a graceful degradation:** "Is this an honest *no evidence*, or an honest
 answer sitting on top of a stage that quietly returned nothing?" Read the trace to tell them apart.
+
+---
+
+## PM-9 — In a retrieval system, the dangerous failures don't crash — they produce plausible output
+
+**Rule (the theme, now three deep):** The failures that matter in a retrieval/generation pipeline
+do not raise. They emit **well-formed, confident, wrong** output that looks like normal operation.
+Nothing errors, nothing looks off — and only reading an **intermediate artifact** (a rank list, a
+filtered pool, a written file) reveals the defect. So the standing defense is not more try/except;
+it is **instrument every stage and read the stage, not the final result.** When output looks fine,
+that is not evidence the pipeline is fine.
+
+**Three instances, one shape:**
+- **The rank-6 discard (Phase 8).** The correct German chunk was retrieved at fused rank ~6 and
+  cut by a top-4 window; the eval reported "reranking barely helps" — a clean, plausible metric
+  that masked a starved reranker. Caught by a pool-probe / the retrieval trace, not the score.
+  (`RERANK_POOL=100`; see the P8 retraction.)
+- **The employed/employee filter mismatch (Phase 11).** A `user_type="employed"` filter (corpus
+  tags `employee`) silently emptied the relevant pool; the graph returned correct dates and a
+  truthful partial. Looked like a coverage gap. Caught by the per-node trace. (Guard:
+  `assert_filter_vocab`.)
+- **The fixture that overwrote the deliverable (Phase 12).** `TestWriteOutputs` wrote to the real
+  `docs/visualiser/` paths, so every suite run replaced the generated `traces.json`/`index.html`
+  with a tiny test fixture. No error; the page still rendered — from fixture data. Caught by a
+  `git status` showing `traces.json` down 354 lines, i.e. by reading the artifact on disk. (Fixed
+  to a temp dir.)
+
+**Relationship to PM-8.** PM-8 ("good abstention conceals upstream defects") is the sub-case where
+the plausible output is a *graceful refusal*. PM-9 is the general theme: the plausible output can
+also be a confident answer (rank-6) or a healthy-looking file (the fixture overwrite). Same defense,
+wider blast radius. Three separate instances in one project is why it earns its own rule — and it is
+the concrete reason every stage in this system is instrumented.
+
+**Test before trusting any green result:** "Did I read the *intermediate* artifact — the ranks, the
+pool, the written file — or only the final output that happens to look right?"
