@@ -24,8 +24,12 @@ sys.path.insert(0, str(_ROOT / "src" / "tools"))
 import gradio as gr          # noqa: E402
 import graph                 # noqa: E402  (the existing workflow, unchanged)
 from hosted_rerank import make_reranker   # noqa: E402
+from space_index import ensure_index      # noqa: E402
 
 REPO_URL = "https://github.com/shwey13fra/nurture-de"
+
+# rebuild Chroma + BM25 from the committed TEXT index (no binary files shipped; seconds, no E5 embed)
+ensure_index()
 
 # --- the one swap: inject the hosted reranker into the graph's module global (graph.py untouched) ---
 graph._reranker = make_reranker()
@@ -122,10 +126,18 @@ with gr.Blocks(title="NurtureDE", analytics_enabled=False) as demo:
     q.submit(answer, inputs=[q, emp, ins], outputs=out)
     gr.Markdown(PRIVACY)
 
-if __name__ == "__main__":
-    # warm the models once so the first real query isn't a cold 17 s E5 load
+def _warm() -> None:
+    # warm E5 (and confirm the hosted reranker) so the first real query isn't a cold load.
+    # runs in a BACKGROUND thread so it never blocks the web port from binding — on the Space's
+    # first boot the E5 download (~2.2 GB) must not delay startup past HuggingFace's health check.
     try:
         graph._retrieve_reranked("Mutterschutz", None)
     except Exception:   # noqa: BLE001 — warmup is best-effort
         pass
+
+
+import threading   # noqa: E402
+threading.Thread(target=_warm, daemon=True).start()   # module-level: runs however HF invokes app.py
+
+if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=int(os.getenv("PORT", "7860")))
