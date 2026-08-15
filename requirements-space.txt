@@ -1,13 +1,11 @@
-# NurtureDE — HuggingFace Space (Gradio, free CPU) runtime deps only (no eval/dev tooling).
-# Pinned to the versions verified locally. CPU torch via the extra index (the free Space is CPU).
+# NurtureDE — HuggingFace Space runtime deps (gradio is installed by the README sdk_version).
+# pydantic/numpy are intentionally UNPINNED: gradio 6.24.0's mcp extra caps pydantic<=2.12.5, and
+# these are transitive deps of chromadb/langgraph/anthropic — let pip resolve a compatible set.
 --extra-index-url https://download.pytorch.org/whl/cpu
-gradio>=5,<6
 torch==2.13.0
 sentence-transformers==5.6.1
 chromadb==1.5.9
 rank-bm25==0.2.2
-numpy==2.4.6
-pydantic==2.13.4
 langgraph==1.2.11
 anthropic==0.120.2
 httpx==0.28.1
