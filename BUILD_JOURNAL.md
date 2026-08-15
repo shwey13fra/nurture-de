@@ -1290,6 +1290,9 @@ fallback if verification fails. `src/hosted_rerank.py` implements both behind th
 (L24/L28/L29/L30, all expect `fam_mutterschutz`) through the hosted reranker and **fails the deploy**
 if the German chunk doesn't reach the reranked top-4 — because if a hosted reranker ranks differently
 from bge, the headline finding stops reproducing and I need to know before it's public, not after.
+**Verified 2026-08-15:** all four passed on Jina — each recovered `fam_mutterschutz` to **rank 0**,
+*more* decisively than the local bge run (which recovered into the top-4 but not always at rank 0).
+Jina confirmed; the Cohere fallback was not needed. Reproducible via the script + a Jina key.
 
 **Interface:** Gradio, minimal — a question box, optional employment/insurance dropdowns, the answer
 with citations (authority + verification date). Prominent "not medical/legal advice" banner, a
