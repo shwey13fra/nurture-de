@@ -1260,6 +1260,49 @@ and hosted rerank is a $0.002 pay-per-call, not a rented idle GPU. (A companion 
 diagnose the actual wall before designing around an assumed one.) The full slice now lives in the
 README roadmap as a costed plan — more useful as a priced option than as a half-built deployment.
 
+### Reversal (2026-08-15) — shipping the thin slice after all
+
+The skip above was the right call on the reasoning it had; the reversal is a different judgement of
+value, not a correction of a mistake: **a public URL an expat can actually type a question into is
+worth building**, even though the visualiser communicates the *system* better. Both are true — the
+visualiser is the better explanation, the live URL is the usable artifact. Recording the earlier
+skip *and* the reversal rather than rewriting the first: the decision genuinely changed.
+
+**HuggingFace Spaces over Vercel + Supabase — considered and rejected for a reason, not overlooked.**
+Vercel's serverless functions can't hold the 2.2 GB E5 model (query embedding runs on the box), and
+Supabase pgvector is unnecessary for **225 vectors on a single instance** — Chroma in-container is
+simpler. So the target is HF Spaces' free CPU tier (16 GB fits E5 fp16); pgvector and a hosted
+embedder stay **roadmap**, chosen against on purpose. The prebuilt index (~8 MB: `chroma_db` +
+`bm25.pkl`) is committed to the *Space* repo (not this one) to avoid the measured ~45-minute E5
+build at container start.
+
+**The one required swap: the reranker → Jina (`jina-reranker-v2-base-multilingual`).** CPU rerank is
+86–89 % of query latency (measured, P11) — genuinely unusable for a stranger. Jina over Cohere
+because it's a multilingual cross-encoder in the *same family* as the local `bge-reranker-v2-m3`, so
+it's the best bet the EN→DE ranking reproduces (Cohere is proprietary and architecturally
+different — higher risk of ranking the cross-lingual cases differently, which is exactly what the
+headline finding depends on); its 10M-free-token tier also keeps the demo at $0 idle. Cohere is the
+fallback if verification fails. `src/hosted_rerank.py` implements both behind the local
+`Reranker.rerank(query, hits)` interface; `app.py` injects it into `graph._reranker` at startup, so
+**graph.py is unchanged**.
+
+**Verify before public.** `src/tools/verify_hosted_rerank.py` re-runs the four EN→DE golden cases
+(L24/L28/L29/L30, all expect `fam_mutterschutz`) through the hosted reranker and **fails the deploy**
+if the German chunk doesn't reach the reranked top-4 — because if a hosted reranker ranks differently
+from bge, the headline finding stops reproducing and I need to know before it's public, not after.
+
+**Interface:** Gradio, minimal — a question box, optional employment/insurance dropdowns, the answer
+with citations (authority + verification date). Prominent "not medical/legal advice" banner, a
+prototype-over-~22-sources line, a repo link. **Stores nothing** (Gradio telemetry off, no logging,
+no persistence — GDPR Art. 9 inputs), stated on the page. No chat history, accounts, or feedback
+forms — anything that isn't a question and an answer is scope creep.
+
+**Cost (reported before deploy, per the guard):** ~$0.05–0.06/query, dominated by Opus generation;
+Jina rerank ~$0.001 (free within the tier); Haiku judge calls ~$0.008. Under the $0.10 line, so Opus
+stays. **Latency-on-live and the four live checks are pending the deploy** (account creation + secret
+entry are the operator's steps, not the assistant's); the Phase-11 prediction — that with rerank
+offloaded, generation dominates — gets tested there. Steps: `DEPLOY.md`.
+
 ## Phase 14 — packaging: the README carries the arc (the last phase)
 
 Packaging meant **presenting the story**, not Python packaging — a reviewer isn't going to `pip
