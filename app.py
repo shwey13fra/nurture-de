@@ -48,48 +48,45 @@ def _profile(employment: str, insurance: str) -> dict:
     return p
 
 
-def _render(state: dict) -> str:
+def _render(state: dict) -> tuple[str, str]:
+    """Returns (answer_body, sources) — sources go in a collapsed panel, shown only on click."""
     resp = state.get("response") or {}
     kind = resp.get("kind")
     if kind == "safe_referral":
-        return "### 🩺 A question for a professional\n\n" + resp["message"]
+        return "### 🩺 A question for a professional\n\n" + resp["message"], ""
     if kind == "request_attributes":
-        return "### One more thing\n\n" + resp["message"]
+        return "### One more thing\n\n" + resp["message"], ""
     if kind == "plan":
         plan = resp["plan"]
-        out = ["### Answer\n", plan.get("summary", ""), ""]
+        body = ["### Answer\n", plan.get("summary", ""), ""]
         tl = plan.get("timeline") or []
         if tl:
-            out.append("**Dates (computed in Python from your due date):**")
+            body.append("**Dates — computed in Python from your due date:**")
             for t in tl:
-                out.append(f"- **{t['event'].replace('_', ' ')}: {t['date']}** — {t.get('rule','')}")
-            out.append("")
-        cites = plan.get("citations") or []
-        if cites:
-            out.append("**Sources** (this is what the citation is grounded in):")
-            for c in cites:
-                out.append(f"- {c.get('authority','?')} "
-                           f"({c.get('authority_tier','?')}) · verified {c.get('last_verified','?')} "
-                           f"· `{c.get('chunk_id','?')}`")
+                body.append(f"- **{t['event'].replace('_', ' ')}: {t['date']}** — {t.get('rule', '')}")
         nc = plan.get("needs_professional_confirmation") or []
         if nc:
-            out.append("\n**Confirm with the authority that decides:** " + ", ".join(nc))
+            body.append("\n**Confirm with the authority that decides:** " + ", ".join(nc))
         if resp.get("issues"):
-            out.append("\n_Note: the citation check flagged a claim to double-check against the "
-                       "source above._")
-        return "\n".join(out)
-    return "Something went wrong producing an answer. Please try rephrasing."
+            body.append("\n_The citation check flagged a claim to double-check against the sources._")
+        cites = plan.get("citations") or []
+        sources = [f"{i}. **{c.get('authority', '?')}** — {c.get('authority_tier', '?')} · "
+                   f"verified {c.get('last_verified', '?')}  \n   `{c.get('chunk_id', '?')}`"
+                   for i, c in enumerate(cites, 1)]
+        return "\n".join(body), ("\n".join(sources) if sources else "*(no cited documents)*")
+    return "Something went wrong producing an answer. Please try rephrasing.", ""
 
 
-def answer(question: str, employment: str, insurance: str) -> str:
+def answer(question: str, employment: str, insurance: str) -> tuple[str, str]:
     question = (question or "").strip()
     if not question:
-        return "Type a question above — for example, *When does Mutterschutz start if I'm due 15 March and employed?*"
+        return ("Type a question above — for example, *When does Mutterschutz start if I'm due "
+                "15 March and employed?*"), ""
     try:
         state = graph.run(question, profile=_profile(employment, insurance))
         return _render(state)
     except Exception as e:   # noqa: BLE001 — never crash the box; report plainly
-        return f"Sorry — the assistant hit an error handling that question.\n\n`{type(e).__name__}: {e}`"
+        return f"Sorry — the assistant hit an error handling that question.\n\n`{type(e).__name__}: {e}`", ""
 
 
 BANNER = """
@@ -111,19 +108,22 @@ PRIVACY = (
     "answer this one request and are never saved."
 )
 
-with gr.Blocks(title="NurtureDE", analytics_enabled=False) as demo:
+_CSS = ".gradio-container{max-width:920px!important;margin:auto!important}"
+
+with gr.Blocks(title="NurtureDE", theme=gr.themes.Soft(), analytics_enabled=False, css=_CSS) as demo:
     gr.Markdown(BANNER)
     gr.Markdown(SUBLINE)
-    with gr.Row():
-        q = gr.Textbox(label="Your question", lines=2,
-                       placeholder="When do I have to tell my employer I'm pregnant?")
+    q = gr.Textbox(label="Your question", lines=2,
+                   placeholder="When do I have to tell my employer I'm pregnant?")
     with gr.Row():
         emp = gr.Dropdown(EMPLOYMENT, value="(prefer not to say)", label="Employment (optional)")
         ins = gr.Dropdown(INSURANCE, value="(prefer not to say)", label="Insurance (optional)")
     btn = gr.Button("Ask", variant="primary")
     out = gr.Markdown()
-    btn.click(answer, inputs=[q, emp, ins], outputs=out)
-    q.submit(answer, inputs=[q, emp, ins], outputs=out)
+    with gr.Accordion("📄 Sources & verification dates", open=False):
+        src = gr.Markdown()
+    btn.click(answer, inputs=[q, emp, ins], outputs=[out, src])
+    q.submit(answer, inputs=[q, emp, ins], outputs=[out, src])
     gr.Markdown(PRIVACY)
 
 def _warm() -> None:
