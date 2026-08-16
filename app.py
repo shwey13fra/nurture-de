@@ -34,9 +34,10 @@ ensure_index()
 # --- the one swap: inject the hosted reranker into the graph's module global (graph.py untouched) ---
 graph._reranker = make_reranker()
 
-# optional speed/cost toggle: set a Space Variable GEN_MODEL=claude-sonnet-5 to switch generation
-# off Opus with no code change (Sonnet is ~2-3x faster on the slow generate step). Default = Opus.
-graph.GEN_MODEL = os.getenv("GEN_MODEL", graph.GEN_MODEL)
+# The live demo generates with Claude Sonnet (~2-3x faster than Opus on the slow generate step,
+# which dominates latency here). Swappable across Claude models via a Space Variable, e.g.
+# GEN_MODEL=claude-opus-5. (The Phase-8 eval figures were measured with Opus; retrieval is unchanged.)
+graph.GEN_MODEL = os.getenv("GEN_MODEL", "claude-sonnet-5")
 
 EMPLOYMENT = ["(prefer not to say)", "employed", "self-employed", "student",
               "civil-servant", "marginally-employed", "not-employed"]

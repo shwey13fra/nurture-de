@@ -51,7 +51,7 @@ flowchart LR
         RT --> GR{grade_evidence}
         GR -->|"insufficient, retry max 2"| RW[rewrite_query] --> RT
         GR -->|sufficient| TL["timeline<br/>dates in Python"]
-        TL --> GN["generate<br/>Claude Opus · grounded · cited"]
+        TL --> GN["generate<br/>Claude Sonnet · grounded · cited"]
         GN --> VC[verify_citations] --> ANS(["cited answer<br/>or honest refusal"])
     end
     E -.-> RT
@@ -65,6 +65,10 @@ filtered, and reranked by a cross-encoder (`bge-reranker-v2-m3`) over a 100-cand
 orchestration is a **workflow, not an agent** — fixed code paths with two routing branches and one
 bounded retry loop — because a missed legal deadline is the failure this exists to prevent, so
 *bounded and traceable* beats *flexible*. Everything sits behind one swappable `search()` interface.
+Generation is a single grounded, cited **Claude** call — the live demo runs **Claude Sonnet** for
+latency (generation dominates query time once the reranker is hosted), and it's swappable across
+Claude models via the `GEN_MODEL` env var. Retrieval is model-independent, so this choice doesn't
+affect the recall figures below.
 
 ## What it does — and deliberately doesn't
 
@@ -80,8 +84,9 @@ bounded retry loop — because a missed legal deadline is the failure this exist
 ## Results
 
 The system prompt fix and the `RERANK_POOL=100` fix were measured together against a golden set of
-**56 cases** (43 scored on the answering + medical subset), Claude Opus held constant as the
-generator, graded by a cheaper judge (Haiku 4.5). Every figure below is traceable to a file — the
+**56 cases** (43 scored on the answering + medical subset), Claude Opus held constant as the eval
+generator (the live demo runs Sonnet for latency; the model doesn't affect retrieval recall),
+graded by a cheaper judge (Haiku 4.5). Every figure below is traceable to a file — the
 full ledger is [`knowledge/figure-audit-2026-08-13.md`](knowledge/figure-audit-2026-08-13.md), and
 the behaviour/recall table is auto-written by `eval/rescore.py` to
 [`eval/results.md`](eval/results.md).
