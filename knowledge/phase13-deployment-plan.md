@@ -1,4 +1,15 @@
-# Phase 13 — deployment: the costed plan (scoped, priced, deliberately deferred)
+# Phase 13 — deployment: the costed plan (scoped, priced, then SHIPPED)
+
+> **Correction (2026-08-16, after deploying):** the "$0 idle / free CPU tier" figures below were
+> wrong — **HuggingFace now requires PRO ($9/mo) for Gradio Spaces**; only Static Spaces are free,
+> and Static can't run this Python backend. So the real cost is **~$0.05/query + $9/mo PRO**, not
+> $0 idle. The thin slice was deployed anyway (live: https://huggingface.co/spaces/Shwey13/nurture-de),
+> with one extra change not in this plan: the built index is shipped as **text** and rebuilt in
+> the container at startup, because HF rejects binary files in normal git. The plan below is kept
+> as written (with this correction on top) rather than silently edited.
+
+---
+
 
 Written so the research survives the decision to skip (PM-10: a plan not on disk is a memory).
 Deployment was **scoped and costed, then deliberately skipped on value grounds** — see the

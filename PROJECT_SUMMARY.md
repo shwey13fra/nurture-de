@@ -89,7 +89,7 @@ Latency is reported as a **share**, never absolute seconds (CPU wall-clock varie
 - **Latency felt slow** → generation switched **Opus → Sonnet** (~2–3× faster; the generate step dominates once reranking is hosted — confirming the Phase-11 prediction). Swappable via `GEN_MODEL`.
 - **UX** → progress "⏳ Working…" message + the Ask button disables during a request; sources moved into a **collapsible panel**; Soft theme + constrained width.
 
-**Cost:** ~$0.05–0.06/query (mostly generation), **$0 idle** on the free tier; Jina rerank free within its tier. Secrets live in Space settings, never in the repo.
+**Cost:** ~$0.05/query (mostly generation) **+ $9/mo HuggingFace PRO** — HF requires PRO for Gradio Spaces (the earlier "free CPU tier" assumption did not hold; corrected here). Jina rerank free within its tier. Secrets live in Space settings, never in the repo.
 
 ---
 

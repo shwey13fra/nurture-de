@@ -19,6 +19,10 @@ the cross-lingual retrieval where the correct German answer sat at rank 6 and wa
 reranking, the bounded retry loop, and where the latency actually goes. It's the fastest way to
 understand what's below.
 
+**▶ Try it live:** **[NurtureDE on HuggingFace Spaces →](https://huggingface.co/spaces/Shwey13/nurture-de)**
+— ask a real question in English or German and get a cited answer. *(Free-tier demo — the first
+request after it's been idle can take up to a minute to wake and answer.)*
+
 ## Why this problem
 
 The information is public, but it's *inaccessible*: fragmented across health, employment, benefits,
@@ -80,6 +84,38 @@ affect the recall figures below.
 | Refuses medical questions and refers to a doctor / midwife / 112 | Never gives clinical judgement, even from adjacent text |
 | Leaves date/amount arithmetic to **Python** and the deciding authority | Never states a benefit amount *as your entitlement* |
 | Flags manipulative / injected text in a source | Stores nothing; every answer is grounded in that request's retrieved context |
+
+## Two ways to use it
+
+The same corpus + tools are exposed through two interfaces:
+
+**1. A live web demo (for people).** [NurtureDE on HuggingFace Spaces](https://huggingface.co/spaces/Shwey13/nurture-de)
+— a Gradio page: type a question, read a cited answer. The reranker is offloaded to a hosted API
+(the only production swap); E5 query-embedding, Chroma, and BM25 run in-container from a text index
+rebuilt at startup, and `graph.py` is unchanged.
+
+**2. An MCP server (for AI agents).** `mcp_server.py` exposes the system over the **Model Context
+Protocol**, so any MCP client (Claude Desktop, Claude Code, Cursor, …) can call it over stdio:
+- **Tools** — `search_official_information` (cited retrieval), `calculate_pregnancy_timeline`
+  (deterministic dates), `explain_german_administrative_term`
+- **Resource** — `germany-family-support://topics` (coverage list) · **Prompt** —
+  `prepare_expat_pregnancy_plan`
+
+Connect it with an MCP config (as in [`.mcp.json`](.mcp.json)):
+
+```json
+{
+  "mcpServers": {
+    "germany-family-support": {
+      "command": ".venv/Scripts/python.exe",
+      "args": ["mcp_server.py"]
+    }
+  }
+}
+```
+
+Same grounding rules in both: the tools report what official sources *say*, always return chunk ids,
+and never decide eligibility or answer medical questions.
 
 ## Results
 
@@ -156,14 +192,18 @@ final output.
 
 ## Roadmap
 
-**Shipped:** an MCP server exposing `search` (P10); LangGraph orchestration instrumented per node
-(P11); the [pipeline visualiser](docs/visualiser/index.html) that renders the trace (P12).
+**Shipped:** an MCP server (P10); LangGraph orchestration instrumented per node (P11); the
+[pipeline visualiser](docs/visualiser/index.html) (P12); and a
+**[live deployment](https://huggingface.co/spaces/Shwey13/nurture-de)** on HuggingFace Spaces (P13).
 
-**Deployment — costed and deliberately deferred (P13).** A live URL was scoped, priced, and skipped
-on **value**, not cost: the visualiser already communicates the system better than a query box
-would. The thin slice is **~$0 idle, ~$0.05/query** — HF Spaces' free CPU fits E5 in 16 GB, so only
-the reranker (86–89% of latency) must be offloaded to a ~$0.002/query hosted API; Chroma runs in-
-container; pgvector and a hosted embedder are scale-only. Kept as a costed plan:
+**Deployment (P13) — thin slice, live.** First deliberately *skipped* on value (the visualiser
+communicates the system better than a query box), then reversed — a URL a user can type into is
+worth building. The one production swap is the reranker → a hosted API (Jina), because CPU
+reranking was 86–89% of query latency; E5 query-embedding, Chroma, and BM25 run in-container from a
+text index rebuilt at startup, `graph.py` unchanged, generation on Claude Sonnet for latency. Cost:
+**~$0.05/query + $9/mo** for HuggingFace PRO (HF requires PRO for Gradio Spaces — the earlier
+"free CPU tier" assumption did **not** hold; corrected here for honesty). **Still roadmap, deferred
+on purpose:** Supabase pgvector and a hosted embedder (needed only at scale), costed in
 [`knowledge/phase13-deployment-plan.md`](knowledge/phase13-deployment-plan.md).
 
 **Still planned:** parent-document retrieval; a referral layer for questions no document can answer
