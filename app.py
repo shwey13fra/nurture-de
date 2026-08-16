@@ -34,6 +34,10 @@ ensure_index()
 # --- the one swap: inject the hosted reranker into the graph's module global (graph.py untouched) ---
 graph._reranker = make_reranker()
 
+# optional speed/cost toggle: set a Space Variable GEN_MODEL=claude-sonnet-5 to switch generation
+# off Opus with no code change (Sonnet is ~2-3x faster on the slow generate step). Default = Opus.
+graph.GEN_MODEL = os.getenv("GEN_MODEL", graph.GEN_MODEL)
+
 EMPLOYMENT = ["(prefer not to say)", "employed", "self-employed", "student",
               "civil-servant", "marginally-employed", "not-employed"]
 INSURANCE = ["(prefer not to say)", "statutory", "private", "family-insured"]
@@ -77,16 +81,21 @@ def _render(state: dict) -> tuple[str, str]:
     return "Something went wrong producing an answer. Please try rephrasing.", ""
 
 
-def answer(question: str, employment: str, insurance: str) -> tuple[str, str]:
+def answer(question: str, employment: str, insurance: str):
+    """Generator: yields a progress message immediately, then the answer — so the user sees it's
+    working (a full answer is ~5 sequential Claude calls and can take up to a minute)."""
     question = (question or "").strip()
     if not question:
-        return ("Type a question above — for example, *When does Mutterschutz start if I'm due "
-                "15 March and employed?*"), ""
+        yield ("Type a question above — for example, *When does Mutterschutz start if I'm due "
+               "15 March and employed?*"), ""
+        return
+    yield ("### ⏳ Working on it…\nReading the official sources and writing a grounded, cited "
+           "answer. This can take up to a minute on the free tier — no need to click again."), ""
     try:
         state = graph.run(question, profile=_profile(employment, insurance))
-        return _render(state)
+        yield _render(state)
     except Exception as e:   # noqa: BLE001 — never crash the box; report plainly
-        return f"Sorry — the assistant hit an error handling that question.\n\n`{type(e).__name__}: {e}`", ""
+        yield f"Sorry — the assistant hit an error handling that question.\n\n`{type(e).__name__}: {e}`", ""
 
 
 BANNER = """
@@ -122,9 +131,18 @@ with gr.Blocks(title="NurtureDE", theme=gr.themes.Soft(), analytics_enabled=Fals
     out = gr.Markdown()
     with gr.Accordion("📄 Sources & verification dates", open=False):
         src = gr.Markdown()
-    btn.click(answer, inputs=[q, emp, ins], outputs=[out, src])
-    q.submit(answer, inputs=[q, emp, ins], outputs=[out, src])
+    def _busy():
+        return gr.update(interactive=False, value="Working…")
+
+    def _idle():
+        return gr.update(interactive=True, value="Ask")
+
+    # disable the button for the whole request (so re-clicks can't stack), stream the answer, re-enable
+    for _trigger in (btn.click, q.submit):
+        _trigger(_busy, None, btn).then(answer, [q, emp, ins], [out, src]).then(_idle, None, btn)
     gr.Markdown(PRIVACY)
+
+demo.queue()   # enable streaming so the "Working…" message shows before the answer
 
 def _warm() -> None:
     # warm E5 (and confirm the hosted reranker) so the first real query isn't a cold load.
